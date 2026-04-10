@@ -1,2 +1,35 @@
 interviewpoints.md
+# dependencies
+node_modules/
+
+# environment variables
 .env
+.env.local
+.env.production
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# build output
+dist/
+build/
+
+# coverage
+coverage/
+
+# misc
+*.tgz
+.cache
+
+# personal notes
+interviewpoints.md
