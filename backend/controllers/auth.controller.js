@@ -1,9 +1,13 @@
-import { User } from "../models/User.model";
+import { User } from "../models/user.model.js";
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "10d" })
+const generateAccessToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" })
+}
+
+const generateRefreshToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" })
 }
 
 export const registerUser = async (req, res) => {
@@ -32,12 +36,22 @@ export const registerUser = async (req, res) => {
             email,
             password
         });
+
+        const accessToken = generateAccessToken(user._id)
+        const refreshToken = generateRefreshToken(user._id)
+        
+        res.cookie("refreshToken", refreshToken, {
+            httpOnly: true, // JavaScript can't access this cookie.
+            secure: process.env.NODE_ENV === "production", // cookie is sent only over HTTPS.
+            sameSite: "strict", // Cookie won't be sent on cross-site requests
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+        })
     
         res.status(201).json({
             _id: user._id,
             username: user.username,
             email: user.email,
-            token: generateToken(user._id)
+            accessToken
         })
         
     } catch (error) {
@@ -66,11 +80,21 @@ export const loginUser = async (req, res) => {
             return res.status(401).json({message: "Invalid credentials"})
         }
 
+        const accessToken = generateAccessToken(user._id)
+        const refreshToken = generateRefreshToken(user._id)
+        
+        res.cookie("refreshToken", refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 1000
+        })
+
         res.json({
             _id: user._id,
             username: user.username,
             email: user.email,
-            token: generateToken(user._id)
+            accessToken
         })
     } catch (error) {
         res.status(500).json({ message: error.message })
