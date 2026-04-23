@@ -1,5 +1,4 @@
 import { User } from "../models/user.model.js";
-import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 
 const generateAccessToken = (id) => {
@@ -101,3 +100,50 @@ export const loginUser = async (req, res) => {
     }
 } 
 
+export const logoutUser = async (req, res) => {
+    res.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        expires: new Date(0)
+    })
+
+    res.status(200).json({message: "Logout Successful"})
+}
+
+export const getMe = async (req, res) => {
+    res.status(200).json(req.user)
+}
+
+export const refreshToken = async (req, res) => {
+    try {
+        const token = req.cookie.refreshToken
+
+    if(!token){
+        return res.status(401).json({message: "No refresh token"})
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET)
+
+    const user = await User.findById(decoded.id)
+
+    if(!user){
+        return res.status(401).json({message: "User doesn't exist"})
+    }
+
+    const newAccessToken = generateAccessToken(user._id)
+    const newRefreshToken = generateRefreshToken(user._id)
+
+    res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict"
+    })
+
+    res.json({accessToken: newAccessToken})
+
+    } catch (error) {
+        return res.status(401).json({message: "Invalid refresh token"})    
+    }
+   
+}
