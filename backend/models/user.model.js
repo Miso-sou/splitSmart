@@ -26,6 +26,10 @@ const userSchema = new Schema(
       lowercase: true,
       match: [/^\S+@\S+\.\S+$/, "Email format is wrong"], // check for valid email
     },
+    avatar: {
+      type: String,
+      default: ''
+    },
     isVerified: {
       type: Boolean,
       default: false,

@@ -5,6 +5,7 @@ import connectDB from "./config/db.js";
 import morgan from "morgan";
 import authRoutes from "./routes/auth.routes.js"
 import cookieParser from "cookie-parser";
+import errorHandler from "./middleware/error.middleware.js";
 
 dotenv.config();
 connectDB();
@@ -24,6 +25,9 @@ app.use("/api/auth", authRoutes)
 app.get("/", (req, res) => {
   res.send("API running");
 });
+
+// Central error handler — must be after all routes
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 

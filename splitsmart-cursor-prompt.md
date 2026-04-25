@@ -47,36 +47,38 @@ This is a portfolio project for a computer science student targeting software en
 
 ```
 splitsmart/
-├── server/                        # Express backend
+├── backend/                       # Express backend
 │   ├── config/
 │   │   └── db.js                  # MongoDB connection
 │   ├── controllers/
-│   │   ├── authController.js
-│   │   ├── groupController.js
-│   │   ├── expenseController.js
-│   │   └── billController.js      # Gemini Vision parsing
+│   │   ├── auth.controller.js
+│   │   ├── group.controller.js
+│   │   ├── expense.controller.js
+│   │   └── bill.controller.js     # Gemini Vision parsing
 │   ├── middleware/
-│   │   ├── authMiddleware.js      # JWT verification
-│   │   └── errorMiddleware.js
+│   │   ├── auth.middleware.js     # JWT verification
+│   │   └── error.middleware.js
 │   ├── models/
-│   │   ├── User.js
-│   │   ├── Group.js
-│   │   └── Expense.js
+│   │   ├── user.model.js
+│   │   ├── group.model.js
+│   │   ├── expense.model.js
+│   │   └── message.model.js       # Group chat messages
 │   ├── routes/
-│   │   ├── auth.js
-│   │   ├── groups.js
-│   │   ├── expenses.js
-│   │   └── bills.js
+│   │   ├── auth.routes.js
+│   │   ├── group.routes.js
+│   │   ├── expense.routes.js
+│   │   └── bill.routes.js
 │   ├── utils/
-│   │   ├── debtSimplification.js  # Minimum cash flow algorithm
-│   │   └── generateToken.js
+│   │   ├── ApiError.js            # Custom error class with HTTP status
+│   │   ├── asyncHandler.js        # Wraps async handlers for auto error forwarding
+│   │   └── debtSimplification.js  # Minimum cash flow algorithm
 │   ├── socket/
 │   │   └── handlers.js            # Socket.io event handlers
 │   ├── .env                       # Never commit this
 │   ├── server.js                  # Entry point
 │   └── package.json
 │
-└── client/                        # React frontend
+└── frontend/                      # React frontend
     ├── src/
     │   ├── api/
     │   │   └── axios.js           # Axios instance with interceptors
@@ -92,6 +94,9 @@ splitsmart/
     │   │   │   ├── ExpenseForm.jsx
     │   │   │   ├── ExpenseList.jsx
     │   │   │   └── BillUploader.jsx
+    │   │   ├── chat/
+    │   │   │   ├── ChatPanel.jsx
+    │   │   │   └── ChatMessage.jsx
     │   │   ├── settlement/
     │   │   │   └── SettlementSummary.jsx
     │   │   └── shared/
@@ -123,7 +128,7 @@ splitsmart/
 
 ## Environment Variables
 
-### server/.env
+### backend/.env
 ```
 PORT=5000
 MONGO_URI=mongodb+srv://...
@@ -136,7 +141,7 @@ CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 CLIENT_URL=http://localhost:5173
 ```
 
-### client/.env
+### frontend/.env
 ```
 VITE_API_URL=http://localhost:5000
 ```
@@ -145,18 +150,19 @@ VITE_API_URL=http://localhost:5000
 
 ## Data Models
 
-### User Model — `server/models/User.js`
+### User Model — `backend/models/user.model.js`
 ```js
 {
-  name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true },        // bcrypt hashed
+  username: { type: String, required: true, unique: true, trim: true, minLength: 3, maxLength: 20 },
+  email: { type: String, required: true, unique: true, lowercase: true, match: /^\S+@\S+\.\S+$/ },
+  password: { type: String, required: true },        // bcrypt hashed (salt rounds: 10)
   avatar: { type: String, default: '' },             // initials-based, generated on frontend
-  createdAt: { type: Date, default: Date.now }
+  isVerified: { type: Boolean, default: false },
+  timestamps: true                                   // createdAt + updatedAt auto-managed
 }
 ```
 
-### Group Model — `server/models/Group.js`
+### Group Model — `backend/models/group.model.js`
 ```js
 {
   name: { type: String, required: true },
@@ -173,7 +179,7 @@ VITE_API_URL=http://localhost:5000
 }
 ```
 
-### Expense Model — `server/models/Expense.js`
+### Expense Model — `backend/models/expense.model.js`
 ```js
 {
   group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
@@ -199,6 +205,17 @@ VITE_API_URL=http://localhost:5000
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }
 }
+```
+
+### Message Model — `backend/models/message.model.js`
+```js
+{
+  group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true, index: true },
+  sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  text: { type: String, required: true, maxLength: 500 },
+  createdAt: { type: Date, default: Date.now }
+}
+// Index: { group: 1, createdAt: -1 } for fast paginated chat history queries
 ```
 
 ---
@@ -245,6 +262,13 @@ VITE_API_URL=http://localhost:5000
 | Method | Endpoint | Description | Auth required |
 |--------|----------|-------------|---------------|
 | GET | `/api/groups/:id/settlement` | Run debt simplification algorithm, return who pays whom | Yes |
+
+### Messages — `/api/groups/:id/messages`
+| Method | Endpoint | Description | Auth required |
+|--------|----------|-------------|---------------|
+| GET | `/` | Get paginated chat history (`?page=1&limit=50`) | Yes |
+
+> Messages are **sent via Socket.io** in real-time, not REST. The GET route is only for loading history when a user opens the group page.
 
 ---
 
@@ -311,7 +335,7 @@ If you cannot read the bill clearly, return: { "error": "Could not parse bill" }
 
 ### 5. Debt Simplification Algorithm
 
-Location: `server/utils/debtSimplification.js`
+Location: `backend/utils/debtSimplification.js`
 
 This is the core algorithmic feature. Implement the **minimum cash flow** algorithm:
 
@@ -368,11 +392,11 @@ function simplifyDebts(expenses) {
 }
 ```
 
-### 6. Real-time Item Assignment (Socket.io)
+### 6. Real-time Item Assignment + Group Chat (Socket.io)
 
-When multiple group members open the same group page, they join a Socket.io room for that group.
+When multiple group members open the same group page, they join a Socket.io room for that group. The same room is used for both bill item assignment and group chat.
 
-Events:
+**Item Assignment Events:**
 ```
 // Client emits when assigning a bill item to themselves:
 socket.emit('assign-item', { expenseId, itemIndex, userId, groupId })
@@ -387,7 +411,18 @@ socket.emit('join-group', { groupId })
 socket.emit('joined-group', { groupId, activeMembers: count })
 ```
 
-Use case: when splitting a restaurant bill, everyone at the table opens the group on their phone and taps the items they ordered in real-time.
+**Chat Events:**
+```
+// Client emits when sending a message:
+socket.emit('send-message', { groupId, text })
+
+// Server saves to DB, then broadcasts to all room members:
+socket.to(groupId).emit('new-message', { _id, sender: { _id, username, avatar }, text, createdAt })
+```
+
+Use case (items): when splitting a restaurant bill, everyone at the table opens the group on their phone and taps the items they ordered in real-time.
+
+Use case (chat): group members can discuss expenses, coordinate who's paying, or ask questions — all without leaving the app.
 
 ### 7. Settlement Summary Page
 
@@ -399,6 +434,19 @@ Display:
 - Group total spend
 - Each member's total contribution vs their fair share
 - Option to mark individual debts as settled (updates the split.settled field)
+
+### 8. Group Chat
+
+Each group has a built-in chat panel on the Group Detail page. This leverages the same Socket.io room used for item assignment — no extra infrastructure.
+
+**Implementation details:**
+- Messages are stored in the `Message` collection (append-only log)
+- On page load: fetch history via `GET /api/groups/:id/messages?page=1&limit=50` (paginated, newest first)
+- New messages are sent via `socket.emit('send-message')` — **not** a REST POST
+- Server handler: validate user is a group member, save to DB, broadcast to room
+- Frontend: `ChatPanel.jsx` component embedded in the Group Detail page (collapsible sidebar or bottom drawer)
+- Infinite scroll upward to load older messages
+- Keep it simple: text only, no media, no read receipts, no threads
 
 ---
 
@@ -459,19 +507,22 @@ Build features in this exact order — each phase is independently testable:
 26. Bill upload + parsed item assignment UI
 27. Settlement summary page
 
-**Phase 7 — Socket.io**
+**Phase 7 — Socket.io + Group Chat**
 28. Socket.io server setup in `server.js`
 29. `socket/handlers.js` — join-group, assign-item events
-30. `SocketContext.jsx` on frontend
-31. Real-time item assignment in the bill parsing UI
+30. Add `send-message` / `new-message` event handlers in `socket/handlers.js`
+31. Message model + `GET /api/groups/:id/messages` route for chat history
+32. `SocketContext.jsx` on frontend
+33. Real-time item assignment in the bill parsing UI
+34. `ChatPanel.jsx` + `ChatMessage.jsx` components in Group Detail page
 
 **Phase 8 — Polish + Deploy**
-32. Error boundaries in React
-33. Loading states on all async operations
-34. Mobile responsive layout
-35. Deploy backend to Render, frontend to Vercel
-36. Add environment variables in Render dashboard
-37. Test full flow on production
+35. Error boundaries in React
+36. Loading states on all async operations
+37. Mobile responsive layout
+38. Deploy backend to Render, frontend to Vercel
+39. Add environment variables in Render dashboard
+40. Test full flow on production
 
 ---
 
@@ -483,5 +534,5 @@ Build features in this exact order — each phase is independently testable:
 - For CORS with credentials (cookies), set `credentials: true` and `origin: process.env.CLIENT_URL` explicitly — `origin: '*'` breaks cookie sending
 - The invite token should be generated with `crypto.randomBytes(32).toString('hex')` — not JWT
 - When calculating balances, always round to 2 decimal places to avoid floating point drift across multiple expenses
-- Use `populate('members.user', 'name email avatar')` when fetching group details — never return raw ObjectIds to the frontend
+- Use `populate('members.user', 'username email avatar')` when fetching group details — never return raw ObjectIds to the frontend
 - On the React side, store the access token in a ref or context state — not localStorage — to prevent XSS exposure
