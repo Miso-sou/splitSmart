@@ -89,24 +89,11 @@ export const joinGroup = asyncHandler(async (req, res) => {
 });
 
 export const genrateInvite = asyncHandler(async (req, res) => {
-  const group = await Group.findById(req.params.id)
-  if(!group){
-    throw new ApiError(404, "Group not found")
-  }
-
-  const isAdmin = group.members.some(
-    m => m.user.toString() === req.user._id.toString() && m.role === 'admin' // if the user who requested 
-  )
-
-  if(!isAdmin){
-    throw new ApiError(403, "Only admins can generate invite links")
-  }
-
   const inviteToken = crypto.randomBytes(32).toString('hex')
-  group.inviteToken = inviteToken
-  group.inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  req.group.inviteToken = inviteToken
+  req.group.inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
-  await group.save()
+  await req.group.save()
 
   res.json({
     inviteLink: `${process.env.CLIENT_URL}/join/${inviteToken}`
@@ -114,5 +101,37 @@ export const genrateInvite = asyncHandler(async (req, res) => {
 })
 
 export const updateGroup = asyncHandler(async (req, res) => {
-  
+  const {name, description} = req.body
+
+  // These two if can directly access group.field because in routes the requireAdmin middleware attaches the group to req body
+  if(name) req.group.name = name
+  if(description !== undefined) req.group.description = description
+
+  await req.group.save()
+
+  res.json(req.group)
+})
+
+export const deleteGroup = asyncHandler(async (req, res) => {
+  await req.group.deleteOne()
+  res.json({messge: "Group deleted successfully."})
+})
+
+export const removeMember = asyncHandler(async (req, res) => {
+  const {userId} = req.params
+
+  if(userId === req.user._id.toString()){
+    throw new ApiError(400, "You cannot remove yourself from the group. If you'd like to delete group then head to delete group option")
+  }
+
+  const memberIndex = req.group.members.findIndex(m => m.user.toString() === userId)
+
+  if(memberIndex === -1){
+    throw new ApiError(404, "User is not a member of this group")
+  }
+
+  req.group.members.splice(memberIndex, 1)
+  await req.group.save()
+
+  res.json({message: "Member removed successfully"})
 })

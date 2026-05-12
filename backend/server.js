@@ -6,6 +6,7 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth.routes.js"
 import cookieParser from "cookie-parser";
 import errorHandler from "./middleware/error.middleware.js";
+import groupRoutes from "./routes/group.routes.js"
 
 dotenv.config();
 connectDB();
@@ -21,6 +22,8 @@ app.use(cookieParser())
 app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes)
+app.use("/api/group", groupRoutes)
+
 
 app.get("/", (req, res) => {
   res.send("API running");

@@ -2,6 +2,7 @@ import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken"
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
+import crypto from "crypto"
 
 const generateAccessToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" })
@@ -132,4 +133,69 @@ export const refreshToken = asyncHandler(async (req, res) => {
     })
 
     res.json({accessToken: newAccessToken})
+})
+
+export const guestLogin = asyncHandler(async (req, res) => {
+    const {displayName} = req.body
+    
+    if(!displayName || displayName.trim().length < 2){
+        throw new ApiError(400, "Display name is required (at least 2 characters long")
+    }
+
+    // generate unique username for guest like guest_a3fd4gh to avoid collsions with real usernames
+    const uniqueSuffix = crypto.randomBytes(4).toString("hex")
+    const username = `guest_${uniqueSuffix}`
+
+    const user = await User.create*{
+        username,
+        isGuest: true,
+    }
+
+    const accessToken = generateAccessToken(user._id)
+    const refreshToken = generateRefreshToken(user._id)
+
+    res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+    })
+
+    res.status(201).json({
+        _id: user._id,
+        username: displayName.trim(),
+        isGuest: true,
+        accessToken
+    })
+})
+
+export const upgradeGuest = asyncHandler(async (req, res) => {
+    const {email, password} = req.body
+
+    if(!req.user.isGuest){
+        throw new ApiError(400, "You already are a registered user")
+    }
+
+    if(!email || !password){
+        throw new ApiError(400, "Email and password are required to register")
+    }
+
+    const emailExists = await User.findOne({email})
+    if(emailExists){
+        throw new ApiError(409, "Email already in use")
+    }
+
+    req.user.email = email
+    req.user.password = password
+    req.user.isGuest = false
+
+    await req.user.save()
+
+    res.json({
+        message: "Account registered successfully",
+        _id: req.user._id,
+        username: req.user.username,
+        email: req.user.email,
+        isGuest: false
+    })
 })
