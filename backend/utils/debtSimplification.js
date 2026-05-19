@@ -54,7 +54,7 @@ export const simplifyDebts = (expenses) => {
     let d = 0 // debtor pointer
 
     while(c < creditors.length && d < debtors.length){
-        const settle = Math.min(creditors[c].amount, debtors[j].amount)
+        const settle = Math.min(creditors[c].amount, debtors[d].amount)
 
         transactions.push({
             from: debtors[d].userId,

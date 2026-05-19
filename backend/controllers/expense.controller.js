@@ -116,6 +116,10 @@ export const getGroupExpenses = asyncHandler(async (req, res) => {
         .populate("splits.user", "username avatar")
         .populate("createdBy", "username avatar")
         .sort({createdAt: -1}) // newsest first
+    
+    if(expenses.length === 0){
+        return res.json({ message: "No expenses in this group yet", expenses: [] })
+    }
 
     res.json(expenses)
 })
@@ -235,8 +239,8 @@ export const updateExpense = asyncHandler(async (req, res) => {
 })
 
 export const deleteExpense = asyncHandler(async (req, res) => {
-    const {expenseId} = req.params.id
-    const expense = Expense.findById(expenseId)
+    const expenseId = req.params.id
+    const expense = await Expense.findById(expenseId)
 
     if(!expense){
         throw new ApiError(404, "Expense not found")
