@@ -3,11 +3,12 @@ import crypto from "crypto";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import Expense from "../models/expense.model.js";
+import Settlement from "../models/settlement.model.js";
 import { simplifyDebts } from "../utils/debtSimplification.js";
 
 // Create a group
 export const createGroup = asyncHandler(async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, icon } = req.body;
 
   if (!name) {
     throw new ApiError(400, "Group name is required");
@@ -18,6 +19,7 @@ export const createGroup = asyncHandler(async (req, res) => {
   const group = await Group.create({
     name,
     description,
+    icon: icon || '',
     createdBy: req.user._id,
     members: [
       {
@@ -106,11 +108,12 @@ export const genrateInvite = asyncHandler(async (req, res) => {
 });
 
 export const updateGroup = asyncHandler(async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, icon } = req.body;
 
   // These two if can directly access group.field because in routes the requireAdmin middleware attaches the group to req body
   if (name) req.group.name = name;
   if (description !== undefined) req.group.description = description;
+  if (icon !== undefined) req.group.icon = icon;
 
   await req.group.save();
 
@@ -164,30 +167,86 @@ export const getSettlement = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You are not a member of this group");
   }
 
-  const expenses = await Expense.find({
+  let expenses = await Expense.find({
     group: id,
     approvalStatus: "approved",
   });
-  // Run the debt simplification algorithm
-  const transactions = simplifyDebts(expenses);
+
+  expenses = expenses.filter(e => {
+    // Sum all split amounts
+    const splitsSum = e.splits.reduce((sum, split) => sum + split.amount, 0);
+    
+    // In equal or custom splits, splitsSum will equal totalAmount upon creation.
+    // In item-based splits, splitsSum starts at 0 and only reaches totalAmount when all items are claimed.
+    // We use a small epsilon (1.0) to account for rounding errors in tax divisions.
+    if (Math.abs(splitsSum - e.totalAmount) < 1.0) {
+      return true;
+    }
+    
+    // If splits do not sum to totalAmount, the bill is not fully claimed.
+    return false;
+  });
+  
+  const settlements = await Settlement.find({ group: id });
+
+  // Compute total expenses manually to build memberStats
+  const balance = {};
+  const expenseTotals = {};
+
+  expenses.forEach(e => {
+    const uid = e.paidBy.toString();
+    expenseTotals[uid] = (expenseTotals[uid] || 0) + e.totalAmount;
+    
+    balance[uid] = (balance[uid] || 0) + e.totalAmount;
+    e.splits.forEach(split => {
+      const splitUid = split.user.toString();
+      balance[splitUid] = (balance[splitUid] || 0) - split.amount;
+    });
+  });
+
+  // Subtract settled amounts
+  settlements.forEach(s => {
+    const fromId = s.from.toString();
+    const toId = s.to.toString();
+    balance[fromId] = (balance[fromId] || 0) + s.amount;
+    balance[toId] = (balance[toId] || 0) - s.amount;
+  });
+
+  const memberStats = group.members.map(m => {
+    const uid = m.user._id.toString();
+    return {
+      user: m.user,
+      totalPaid: expenseTotals[uid] || 0,
+      netBalance: Math.round((balance[uid] || 0) * 100) / 100
+    };
+  });
+
+  // Feed into simplifyDebts without changing its signature by creating pseudo-expenses from settlements
+  const pseudoExpenses = settlements.map(s => ({
+    paidBy: s.from,
+    totalAmount: s.amount,
+    splits: [{ user: s.to, amount: s.amount }]
+  }));
+
+  const transactions = simplifyDebts([...expenses, ...pseudoExpenses]);
 
   const memberMap = {};
   group.members.forEach((m) => {
     memberMap[m.user._id.toString()] = m.user;
   });
 
-  // Enrich transactions with user details for the frontend
   const enrichedTransactions = transactions.map((t) => ({
-    from: memberMap[t.from] || t.from, // fallback to raw ID if user left group
+    from: memberMap[t.from] || t.from,
     to: memberMap[t.to] || t.to,
     amount: t.amount,
   }));
 
-  const totalGroupSpendings = expenses.reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalGroupSpendings = expenses.reduce((sum, s) => sum + s.totalAmount, 0);
 
   res.json({
     groupId: id,
     totalGroupSpendings: Math.round(totalGroupSpendings * 100) / 100,
-    transactions: enrichedTransactions
-  })
+    transactions: enrichedTransactions,
+    memberStats
+  });
 });

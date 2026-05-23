@@ -12,6 +12,7 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
   const { user: currentUser } = useAuth()
   const [name, setName] = useState(group?.name || '')
   const [description, setDescription] = useState(group?.description || '')
+  const [icon, setIcon] = useState(group?.icon || '')
   const [submitting, setSubmitting] = useState(false)
 
   // Optimistic UI for member removal
@@ -25,7 +26,8 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
     try {
       const res = await groupService.updateGroup(group._id, {
         name: name.trim(),
-        description: description.trim()
+        description: description.trim(),
+        icon: icon.trim()
       })
       toast.success('Group updated')
       onGroupUpdated(res.data)
@@ -57,14 +59,24 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
         <div className="space-y-4">
           <div>
             <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">
-              Group Name
+              Group Icon & Name
             </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-sm text-white bg-[#252525] border border-white/[0.06] focus:outline-none focus:border-[#6b7280] transition-colors"
-            />
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                placeholder="🏖️"
+                maxLength={2}
+                className="w-12 h-12 flex-shrink-0 text-center rounded-xl text-lg text-white bg-[#252525] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] transition-colors"
+              />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="flex-1 w-full px-4 py-3 rounded-xl text-sm text-white bg-[#252525] border border-white/[0.06] focus:outline-none focus:border-[#6b7280] transition-colors"
+              />
+            </div>
           </div>
           <div>
             <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">

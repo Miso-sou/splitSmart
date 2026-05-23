@@ -64,9 +64,12 @@ export default function GroupDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1010]">
+    <div className={cn(
+      "bg-[#0f1010] flex flex-col",
+      activeTab === 'chat' ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"
+    )}>
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-[#0f1010] px-4 pt-4 pb-2">
+      <header className="sticky top-0 z-30 bg-[#0f1010] px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center justify-between max-w-3xl mx-auto">
           <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
             <button
@@ -76,6 +79,9 @@ export default function GroupDetail() {
             >
               <ArrowLeft size={18} className="text-white" />
             </button>
+            {group.icon && (
+              <span className="text-xl leading-none pt-0.5">{group.icon}</span>
+            )}
             <h1 className="text-lg font-medium text-white truncate">
               {group.name}
             </h1>
@@ -148,7 +154,12 @@ export default function GroupDetail() {
       </header>
 
       {/* Tab content */}
-      <main className="px-4 pb-24 max-w-3xl mx-auto mt-2">
+      <main className={cn(
+        "max-w-3xl mx-auto w-full",
+        activeTab === 'chat' 
+          ? "flex-1 min-h-0 px-0 mt-0 flex flex-col" 
+          : "px-4 pb-24 mt-2"
+      )}>
         {activeTab === 'expenses' && (
           <ExpensesTab groupId={id} group={group} user={user} />
         )}
@@ -156,23 +167,25 @@ export default function GroupDetail() {
           <BalancesTab groupId={id} user={user} />
         )}
         {activeTab === 'chat' && (
-          <ChatTab />
+          <ChatTab groupId={id} user={user} />
         )}
       </main>
 
       {/* FAB — Add Expense */}
-      <button
-        id="fab-add-expense"
-        onClick={() => navigate(`/groups/${id}/add-expense`)}
-        className={cn(
-          'fixed bottom-6 left-1/2 -translate-x-1/2 z-40',
-          'w-14 h-14 rounded-full bg-accent-green flex items-center justify-center',
-          'transition-all duration-200 active:scale-95'
-        )}
-        aria-label="Add expense"
-      >
-        <Plus size={24} className="text-white" strokeWidth={2.5} />
-      </button>
+      {activeTab !== 'chat' && (
+        <button
+          id="fab-add-expense"
+          onClick={() => navigate(`/groups/${id}/add-expense`)}
+          className={cn(
+            'fixed bottom-6 left-1/2 -translate-x-1/2 z-40',
+            'w-14 h-14 rounded-full bg-accent-green flex items-center justify-center',
+            'transition-all duration-200 active:scale-95'
+          )}
+          aria-label="Add expense"
+        >
+          <Plus size={24} className="text-white" strokeWidth={2.5} />
+        </button>
+      )}
 
       <ShareGroupModal 
         isOpen={isShareModalOpen} 

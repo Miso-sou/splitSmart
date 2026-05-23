@@ -11,6 +11,10 @@ const expenseSchema = new Schema(
       type: String,
       required: true,
     },
+    icon: {
+      type: String,
+      default: "",
+    },
     totalAmount: {
       type: Number,
       required: true,

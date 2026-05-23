@@ -29,6 +29,11 @@ const groupSchema = new Schema({
         default: '',
         maxLength: 300
     },
+    icon: {
+        type: String,
+        default: '',
+        maxLength: 10
+    },
     members: [memberSchema],
     inviteToken: {
         type: String,

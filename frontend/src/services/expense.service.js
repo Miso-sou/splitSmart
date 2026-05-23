@@ -12,4 +12,10 @@ export const expenseService = {
 
   deleteExpense: (id) =>
     api.delete(`/api/expense/${id}`),
+
+  updateExpense: (id, data) =>
+    api.put(`/api/expense/${id}`, data),
+
+  approveExpense: (id) =>
+    api.put(`/api/expense/${id}/approve`),
 }

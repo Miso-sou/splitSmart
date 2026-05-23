@@ -29,9 +29,13 @@ function GroupCard({ group, onClick }) {
     >
       {/* Initials avatar */}
       <div className="w-10 h-10 rounded-xl bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
-        <span className="text-xs font-medium text-[#6b7280]">
-          {getInitials(group.name)}
-        </span>
+        {group.icon ? (
+          <span className="text-lg">{group.icon}</span>
+        ) : (
+          <span className="text-xs font-medium text-[#6b7280]">
+            {getInitials(group.name)}
+          </span>
+        )}
       </div>
 
       {/* Group info */}

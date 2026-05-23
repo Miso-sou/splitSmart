@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, MoreVertical, Edit2, Trash2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { expenseService } from '../services/expense.service'
+import { groupService } from '../services/group.service'
 import { useAuth } from '../hooks/useAuth'
 import LoadingSpinner from '../components/shared/LoadingSpinner'
 import { cn } from '../lib/cn'
@@ -40,19 +42,27 @@ export default function ExpenseDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  const [group, setGroup] = useState(null)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isApproving, setIsApproving] = useState(false)
+
   useEffect(() => {
-    // Fetch all expenses for the group and find the specific one
-    expenseService.getGroupExpenses(id)
-      .then((res) => {
-        const data = Array.isArray(res.data) ? res.data : (res.data.expenses || [])
+    Promise.all([
+      expenseService.getGroupExpenses(id),
+      groupService.getGroupById(id)
+    ])
+      .then(([expensesRes, groupRes]) => {
+        const data = Array.isArray(expensesRes.data) ? expensesRes.data : (expensesRes.data.expenses || [])
         const found = data.find((e) => e._id === expenseId)
         if (found) {
           setExpense(found)
+          setGroup(groupRes.data)
         } else {
           setError('Expense not found')
         }
       })
-      .catch((err) => setError(err.response?.data?.message || 'Failed to load expense'))
+      .catch((err) => setError(err?.response?.data?.message || 'Failed to load expense'))
       .finally(() => setLoading(false))
   }, [id, expenseId])
 
@@ -81,27 +91,124 @@ export default function ExpenseDetail() {
   const payer = expense.paidBy
   const splitType = getSplitType(expense)
 
+  const isCreator = expense?.createdBy?._id === user?._id || expense?.createdBy === user?._id
+  const isAdmin = group?.members?.find(m => m.user?._id === user?._id || m.user === user?._id)?.role === 'admin'
+  const canEdit = isCreator || isAdmin
+
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this expense?')) return
+    setIsDeleting(true)
+    try {
+      await expenseService.deleteExpense(expenseId)
+      toast.success('Expense deleted')
+      navigate(`/groups/${id}`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete expense')
+      setIsDeleting(false)
+    }
+  }
+
+  const handleApprove = async () => {
+    setIsApproving(true)
+    try {
+      await expenseService.approveExpense(expenseId)
+      toast.success('Expense approved successfully!')
+      setExpense(prev => ({ ...prev, approvalStatus: 'approved' }))
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to approve expense')
+    } finally {
+      setIsApproving(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0f1010]">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-[#0f1010] px-4 pt-4 pb-3">
-        <div className="flex items-center gap-3 max-w-3xl mx-auto">
-          <button
-            id="btn-back"
-            onClick={() => navigate(`/groups/${id}`)}
-            className="w-9 h-9 rounded-xl bg-[#252525] flex items-center justify-center hover:bg-[#2e2e2e] transition-colors flex-shrink-0"
-          >
-            <ArrowLeft size={18} className="text-white" />
-          </button>
-          <h1 className="text-lg font-medium text-white truncate">
-            Expense Detail
-          </h1>
+        <div className="flex items-center justify-between max-w-3xl mx-auto">
+          <div className="flex items-center gap-3 min-w-0 pr-4">
+            <button
+              id="btn-back"
+              onClick={() => navigate(`/groups/${id}`)}
+              className="w-9 h-9 rounded-xl bg-[#252525] flex items-center justify-center hover:bg-[#2e2e2e] transition-colors flex-shrink-0"
+            >
+              <ArrowLeft size={18} className="text-white" />
+            </button>
+            <h1 className="text-lg font-medium text-white truncate">
+              Expense Detail
+            </h1>
+          </div>
+
+          {canEdit && (
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="w-9 h-9 rounded-xl bg-[#252525] flex items-center justify-center hover:bg-[#2e2e2e] transition-colors"
+                disabled={isDeleting}
+              >
+                <MoreVertical size={18} className="text-white" />
+              </button>
+
+              {isMenuOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setIsMenuOpen(false)} 
+                  />
+                  <div className="absolute top-11 right-0 w-48 bg-[#252525] border border-white/[0.06] rounded-xl shadow-2xl overflow-hidden z-50 py-1">
+                    <button
+                      onClick={() => navigate(`/groups/${id}/expenses/${expenseId}/edit`)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[#2e2e2e] transition-colors"
+                    >
+                      <Edit2 size={16} className="text-[#6b7280]" />
+                      Edit Expense
+                    </button>
+                    <div className="h-px bg-white/[0.04] my-1 mx-2" />
+                    <button
+                      onClick={handleDelete}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                      Delete Expense
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
       <main className="px-4 pb-12 max-w-3xl mx-auto space-y-6">
+        {expense.approvalStatus === 'pending' && (
+          <div className="bg-[rgba(234,179,8,0.12)] border border-[rgba(234,179,8,0.2)] rounded-2xl p-4 flex items-start sm:items-center justify-between gap-4 mt-2">
+            <div>
+              <h4 className="text-sm font-medium text-yellow-500 mb-0.5">Pending Approval</h4>
+              <p className="text-[13px] text-[#9ca3af]">This expense was created by a guest and requires admin approval.</p>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={handleApprove}
+                disabled={isApproving}
+                className="shrink-0 bg-yellow-500 hover:bg-yellow-600 text-[#0f1010] text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {isApproving ? 'Approving...' : 'Approve'}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Title + date + split badge */}
-        <div className="text-center pt-2">
+        <div className="text-center pt-2 flex flex-col items-center">
+          <div className="w-16 h-16 rounded-2xl bg-[#1a1a1a] flex items-center justify-center mb-4">
+            {expense.icon ? (
+              <span className="text-3xl">{expense.icon}</span>
+            ) : (
+              <span className="text-2xl font-medium text-[#6b7280]">
+                {expense.description ? expense.description[0].toUpperCase() : '?'}
+              </span>
+            )}
+          </div>
           <h2 className="text-xl font-medium text-white">
             {expense.description}
           </h2>

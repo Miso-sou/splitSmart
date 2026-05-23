@@ -9,6 +9,7 @@ export default function CreateGroupModal({ isOpen, onClose }) {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [icon, setIcon] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e) => {
@@ -19,7 +20,8 @@ export default function CreateGroupModal({ isOpen, onClose }) {
     try {
       const res = await groupService.createGroup({
         name: name.trim(),
-        description: description.trim()
+        description: description.trim(),
+        icon: icon.trim()
       })
       toast.success('Group created successfully!')
       onClose()
@@ -37,16 +39,26 @@ export default function CreateGroupModal({ isOpen, onClose }) {
         <div className="space-y-4">
           <div>
             <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">
-              Group Title
+              Group Icon & Title
             </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="E.g., Goa Trip, Apartment Rent"
-              autoFocus
-              className="w-full px-4 py-3 rounded-xl text-sm text-white bg-[#252525] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] transition-colors"
-            />
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                placeholder="🏖️"
+                maxLength={2}
+                className="w-12 h-12 flex-shrink-0 text-center rounded-xl text-lg text-white bg-[#252525] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] transition-colors"
+              />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="E.g., Goa Trip, Apartment Rent"
+                autoFocus
+                className="flex-1 w-full px-4 py-3 rounded-xl text-sm text-white bg-[#252525] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] transition-colors"
+              />
+            </div>
           </div>
           <div>
             <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">

@@ -40,18 +40,29 @@ function ExpenseRow({ expense, groupId }) {
         'transition-colors duration-150 text-left'
       )}
     >
-      {/* Payer avatar */}
-      <div className="w-9 h-9 rounded-xl bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
-        <span className="text-[11px] font-medium text-[#6b7280]">
-          {getInitials(formatUsername(payer))}
-        </span>
+      {/* Expense Icon */}
+      <div className="w-10 h-10 rounded-xl bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
+        {expense.icon ? (
+          <span className="text-lg">{expense.icon}</span>
+        ) : (
+          <span className="text-sm font-medium text-[#6b7280]">
+            {expense.description ? expense.description[0].toUpperCase() : '?'}
+          </span>
+        )}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <h4 className="text-[14px] font-medium text-white truncate">
-          {expense.description}
-        </h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-[14px] font-medium text-white truncate">
+            {expense.description}
+          </h4>
+          {expense.approvalStatus === 'pending' && (
+            <span className="shrink-0 text-[10px] font-medium text-yellow-500 bg-[rgba(234,179,8,0.12)] px-1.5 py-0.5 rounded">
+              Pending
+            </span>
+          )}
+        </div>
         <p className="text-[12px] text-[#6b7280] mt-0.5">
           Paid by <span className="font-medium text-[#9ca3af]">{formatUsername(payer)}</span>
         </p>

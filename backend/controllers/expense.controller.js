@@ -4,7 +4,7 @@ import asyncHandler from "../utils/asyncHandler.js"
 import ApiError from "../utils/ApiError.js"
 
 export const createExpense = asyncHandler(async (req, res) => {
-    const {group, description, category, paidBy, items, splitType, splitAmong, customSplits} = req.body
+    const {group, description, icon, category, paidBy, items, splitType, splitAmong, customSplits} = req.body
 
     if(!group || !description || !paidBy){
         throw new ApiError(400, "Group, description and paidBy are required")
@@ -86,6 +86,7 @@ export const createExpense = asyncHandler(async (req, res) => {
     const expense = await Expense.create({
         group,
         description,
+        icon: icon || "",
         totalAmount,
         paidBy,
         splits,
@@ -165,17 +166,25 @@ export const updateExpense = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Guest users cannot edit expenses. Please register to edit.")
     }
 
-    // Only the creator of the expense can edit it
-    if(expense.createdBy.toString() !== req.user._id.toString()){
-        throw new ApiError(403, "Only the expense creator can edit this expense")
+    // Only the creator or group admin can edit
+    const isCreator = expense.createdBy.toString() === req.user._id.toString()
+    const group = await Group.findById(expense.group)
+    const member = group?.members.find(
+        m => m.user.toString() === req.user._id.toString()
+    )
+    const isAdmin = member?.role === "admin"
+
+    if(!isCreator && !isAdmin){
+        throw new ApiError(403, "Only the expense creator or an admin can edit this expense")
     }
 
     // --- Extract editable fields from request body ---
     // createdBy and group are NEVER editable
-    const {description, category, paidBy, items, splitType, splitAmong, customSplits} = req.body
+    const {description, icon, category, paidBy, items, splitType, splitAmong, customSplits} = req.body
 
     // Update simple metadata fields if provided
     if(description) expense.description = description
+    if(icon !== undefined) expense.icon = icon
     if(category) expense.category = category
     if(paidBy) expense.paidBy = paidBy
 
@@ -329,7 +338,152 @@ export const getgroupBalances = asyncHandler(async (req, res) => {
     res.json({
         groupId,
         totalGroupSpendings: Math.round(totalGroupSpendings * 100) / 100,
-        balances: result
     })
 
 })
+
+export const getExpenseById = asyncHandler(async (req, res) => {
+    const expense = await Expense.findById(req.params.id)
+        .populate("paidBy", "username avatar isGuest")
+        .populate("splits.user", "username avatar isGuest")
+        .populate("items.assignedTo", "username avatar isGuest")
+        .populate("createdBy", "username avatar isGuest");
+
+    if (!expense) {
+        throw new ApiError(404, "Expense not found");
+    }
+
+    const group = await Group.findById(expense.group);
+    if (!group) {
+        throw new ApiError(404, "Group not found");
+    }
+
+    const isMember = group.members.some(m => m.user.toString() === req.user._id.toString());
+    if (!isMember) {
+        throw new ApiError(403, "You are not a member of this group");
+    }
+
+    res.json(expense);
+});
+
+export const claimItem = asyncHandler(async (req, res) => {
+    const { id: expenseId, itemId } = req.params;
+    
+    const requestedQuantity = parseInt(req.body.quantity) || 1;
+
+    const initialExpense = await Expense.findById(expenseId);
+    if (!initialExpense) {
+        throw new ApiError(404, "Expense not found");
+    }
+
+    const group = await Group.findById(initialExpense.group);
+    const isMember = group.members.some(m => m.user.toString() === req.user._id.toString());
+    if (!isMember) {
+        throw new ApiError(403, "You are not a member of this group");
+    }
+
+    // Find the original item to verify its existence and properties
+    const item = initialExpense.items.find(i => i._id.toString() === itemId);
+    if (!item) {
+        throw new ApiError(404, "Item not found");
+    }
+    
+    if (item.assignedTo) {
+        throw new ApiError(409, "Item has already been claimed");
+    }
+
+    if (requestedQuantity > item.quantity) {
+        throw new ApiError(400, "Cannot claim more than available quantity");
+    }
+
+    let updatedExpense;
+
+    // Atomic update to handle concurrency
+    if (requestedQuantity === item.quantity) {
+        // Full claim
+        updatedExpense = await Expense.findOneAndUpdate(
+            { 
+                _id: expenseId, 
+                "items._id": itemId, 
+                "items.quantity": requestedQuantity,
+                "items.assignedTo": null 
+            },
+            { 
+                $set: { "items.$.assignedTo": req.user._id } 
+            },
+            { new: true }
+        );
+    } else {
+        // Partial claim: Split the item
+        // MongoDB cannot $inc an array element and $push to the same array in one operation.
+        // Step 1: Atomically check quantity and decrement
+        const securedExpense = await Expense.findOneAndUpdate(
+            { 
+                _id: expenseId, 
+                "items._id": itemId, 
+                "items.quantity": { $gte: requestedQuantity },
+                "items.assignedTo": null 
+            },
+            { 
+                $inc: { "items.$.quantity": -requestedQuantity }
+            },
+            { new: true }
+        );
+        
+        if (securedExpense) {
+            // Step 2: Push the new split item into the secured document
+            securedExpense.items.push({
+                name: item.name,
+                price: item.price,
+                quantity: requestedQuantity,
+                assignedTo: req.user._id
+            });
+            updatedExpense = await securedExpense.save();
+        }
+    }
+
+    if (!updatedExpense) {
+        // The item was likely claimed or modified concurrently
+        return res.status(409).json({ message: "Item no longer available in that quantity. Please refresh and try again." });
+    }
+
+    // Recompute splits based on the newly updated items array
+    const TAX_KEYWORDS = ['tax', 'gst', 'vat', 'service charge', 'cess'];
+    const isTaxItem = (name) => TAX_KEYWORDS.some(k => name.toLowerCase().includes(k));
+
+    let totalTaxAmount = 0;
+    const userSplitTotals = {};
+    const participants = new Set();
+
+    updatedExpense.items.forEach(i => {
+        if (isTaxItem(i.name)) {
+            totalTaxAmount += (i.price * (i.quantity || 1));
+        } else if (i.assignedTo) {
+            const uid = i.assignedTo.toString();
+            if (!userSplitTotals[uid]) userSplitTotals[uid] = 0;
+            userSplitTotals[uid] += (i.price * (i.quantity || 1));
+            participants.add(uid);
+        }
+    });
+
+    const participantCount = participants.size;
+    const taxPerPerson = participantCount > 0 ? (totalTaxAmount / participantCount) : 0;
+
+    const newSplits = Object.keys(userSplitTotals).map(userId => ({
+        user: userId,
+        amount: Math.round((userSplitTotals[userId] + taxPerPerson) * 100) / 100
+    }));
+
+    // Update splits and save
+    updatedExpense.splits = newSplits;
+    await updatedExpense.save();
+
+    // Populate for response
+    const finalExpense = await Expense.findById(expenseId)
+        .populate("paidBy", "username avatar isGuest")
+        .populate("splits.user", "username avatar isGuest")
+        .populate("items.assignedTo", "username avatar isGuest")
+        .populate("createdBy", "username avatar isGuest");
+
+    res.json(finalExpense);
+});

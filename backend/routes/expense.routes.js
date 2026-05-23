@@ -1,5 +1,5 @@
 import express from "express";
-import { protect } from "../middleware/auth.middleware.js";
+import { protect, requireRegistered } from "../middleware/auth.middleware.js";
 import {
   createExpense,
   getGroupExpenses,
@@ -7,6 +7,8 @@ import {
   updateExpense,
   deleteExpense,
   getgroupBalances,
+  getExpenseById,
+  claimItem,
 } from "../controllers/expense.controller.js";
 
 const router = express.Router();
@@ -19,5 +21,7 @@ router.get("/group/:groupId/balances", getgroupBalances);
 router.put("/:id/approve", approveExpense);
 router.put("/:id", updateExpense);
 router.delete("/:id", deleteExpense);
+router.get("/:id", getExpenseById);
+router.post("/:id/items/:itemId/claim", claimItem);
 
 export default router;

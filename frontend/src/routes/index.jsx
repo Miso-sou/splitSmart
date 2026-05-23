@@ -9,6 +9,7 @@ import Dashboard from '../pages/Dashboard'
 import GroupDetail from '../pages/GroupDetail'
 import ExpenseDetail from '../pages/ExpenseDetail'
 import AddExpense from '../pages/AddExpense'
+import EditExpense from '../pages/EditExpense'
 import Settlement from '../pages/Settlement'
 
 export default function AppRoutes() {
@@ -32,6 +33,10 @@ export default function AppRoutes() {
       <Route
         path={ROUTES.ADD_EXPENSE}
         element={<ProtectedRoute><AddExpense /></ProtectedRoute>}
+      />
+      <Route
+        path={ROUTES.EDIT_EXPENSE}
+        element={<ProtectedRoute><EditExpense /></ProtectedRoute>}
       />
       <Route
         path={ROUTES.SETTLEMENT}

@@ -18,6 +18,10 @@ export const parseBill = asyncHandler(async (req, res) => {
 
   const prompt = `
     Extract all line items from this restaurant/shop bill.
+    If there are taxes, treat the total combined tax as a single item in the "items" array (do NOT split into SGST/CGST, just create one "Total Tax" item).
+    
+    IMPORTANT: The price listed on the right side of the bill is often the TOTAL row price for that quantity. For the "price" field in your JSON, you MUST calculate and return the UNIT PRICE (i.e., the total row price divided by the quantity). 
+    For example, if the bill says "4 x Veg Biryani 360.00", the quantity is 4 and the unit price is 90.00.
 
     Return ONLY valid JSON with no extra text, markdown, or explanation.
 
@@ -25,10 +29,9 @@ export const parseBill = asyncHandler(async (req, res) => {
     {
     "items": [
         { "name": "Item name", "price": 150, "quantity": 1 },
-        { "name": "Another item", "price": 80, "quantity": 2 }
+        { "name": "Another item", "price": 80, "quantity": 2 },
+        { "name": "Total Tax", "price": 20, "quantity": 1 }
     ],
-    "subtotal": 310,
-    "tax": 20,
     "total": 330
     }
 
