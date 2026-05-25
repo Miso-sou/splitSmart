@@ -9,6 +9,7 @@ import {
   getgroupBalances,
   getExpenseById,
   claimItem,
+  unclaimItem,
 } from "../controllers/expense.controller.js";
 
 const router = express.Router();
@@ -23,5 +24,6 @@ router.put("/:id", updateExpense);
 router.delete("/:id", deleteExpense);
 router.get("/:id", getExpenseById);
 router.post("/:id/items/:itemId/claim", claimItem);
+router.delete("/:id/items/:itemId/claim", unclaimItem);
 
 export default router;

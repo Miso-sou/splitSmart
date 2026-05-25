@@ -30,5 +30,10 @@ export function registerSocketHandlers(io) {
     socket.on("assign-item", ({ groupId, itemId, userId }) => {
       io.to(groupId).emit("item-assigned", { groupId, itemId, userId });
     });
+
+    // Relay item claim/unclaim to all OTHER clients in the room
+    socket.on("item-claimed", ({ groupId, expenseId }) => {
+      socket.to(groupId).emit("item-claimed", { expenseId });
+    });
   });
 }

@@ -1,5 +1,5 @@
 import express from "express";
-import { protect, requireRegistered } from "../middleware/auth.middleware.js";
+import { protect } from "../middleware/auth.middleware.js";
 import {
   createSettlement,
   getSettlementsByGroup,
@@ -8,7 +8,6 @@ import {
 const router = express.Router();
 
 router.use(protect);
-router.use(requireRegistered);
 
 router.post("/", createSettlement);
 router.get("/", getSettlementsByGroup);

@@ -35,12 +35,13 @@ export const simplifyDebts = (expenses) => {
     const debtors = []
 
     Object.entries(balance).forEach(([userId, amount]) => {
-        if(amount > 0.01){
-            creditors.push({userId, amount})
-        } else if (amount < 0.01){
-            debtors.push({userId, amount: -amount})
+        const roundedAmount = Math.round(amount * 100) / 100;
+        if (roundedAmount > 0.015) {
+            creditors.push({ userId, amount: roundedAmount });
+        } else if (roundedAmount < -0.015) {
+            debtors.push({ userId, amount: -roundedAmount });
         }
-    })
+    });
 
     // sort both array in desc. - for greedy matching
     creditors.sort((a, b) => b.amount - a.amount)

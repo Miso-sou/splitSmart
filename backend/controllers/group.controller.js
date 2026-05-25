@@ -195,7 +195,12 @@ export const getSettlement = asyncHandler(async (req, res) => {
 
   expenses.forEach(e => {
     const uid = e.paidBy.toString();
-    expenseTotals[uid] = (expenseTotals[uid] || 0) + e.totalAmount;
+    
+    // Find the payer's own split share to represent their actual out-of-pocket spending
+    const payerSplit = e.splits.find(s => s.user.toString() === uid);
+    const payerShare = payerSplit ? payerSplit.amount : 0;
+    
+    expenseTotals[uid] = (expenseTotals[uid] || 0) + payerShare;
     
     balance[uid] = (balance[uid] || 0) + e.totalAmount;
     e.splits.forEach(split => {
@@ -204,20 +209,24 @@ export const getSettlement = asyncHandler(async (req, res) => {
     });
   });
 
-  // Subtract settled amounts
+  // Subtract settled amounts and add to totalPaid for the sender
   settlements.forEach(s => {
     const fromId = s.from.toString();
     const toId = s.to.toString();
     balance[fromId] = (balance[fromId] || 0) + s.amount;
     balance[toId] = (balance[toId] || 0) - s.amount;
+    
+    // Add settlement paid to the sender's totalPaid
+    expenseTotals[fromId] = (expenseTotals[fromId] || 0) + s.amount;
   });
 
   const memberStats = group.members.map(m => {
     const uid = m.user._id.toString();
+    const net = Math.round((balance[uid] || 0) * 100) / 100;
     return {
       user: m.user,
       totalPaid: expenseTotals[uid] || 0,
-      netBalance: Math.round((balance[uid] || 0) * 100) / 100
+      netBalance: Math.abs(net) < 0.02 ? 0 : net
     };
   });
 

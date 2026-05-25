@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronUp, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Check, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
 import { groupService } from '../services/group.service'
 import { expenseService } from '../services/expense.service'
 import { useAuth } from '../hooks/useAuth'
@@ -41,6 +41,7 @@ export default function EditExpense() {
   // Split state
   const [selectedMembers, setSelectedMembers] = useState({})
   const [customAmounts, setCustomAmounts] = useState({})
+  const [items, setItems] = useState([])
 
   // Load group and expense data
   useEffect(() => {
@@ -63,14 +64,33 @@ export default function EditExpense() {
           
           // Determine split type
           let type = 'equal'
-          if (expense.items && expense.items.length > 1) {
-             type = 'item-based'
+          const isSingleDummyItem = expense.items && expense.items.length === 1 && 
+            expense.items[0].name === expense.description && 
+            expense.items[0].price === expense.totalAmount && 
+            expense.items[0].quantity === 1;
+
+          if (expense.items && expense.items.length > 0 && !isSingleDummyItem) {
+            type = 'item-based'
           } else if (expense.splits && expense.splits.length > 0) {
             const amounts = expense.splits.map((s) => s.amount)
             const allEqual = amounts.every((a) => Math.abs(a - amounts[0]) < 0.02)
             type = allEqual ? 'equal' : 'custom'
           }
           setSplitType(type)
+
+          // Populate items state
+          if (expense.items && expense.items.length > 0) {
+            setItems(expense.items.map(i => ({
+              id: i._id || i.id || Date.now() + Math.random(),
+              _id: i._id,
+              name: i.name,
+              price: i.price?.toString() || '',
+              quantity: i.quantity || 1,
+              claims: i.claims || []
+            })))
+          } else {
+            setItems([])
+          }
 
           const sel = {}
           const cAmounts = {}
@@ -92,6 +112,7 @@ export default function EditExpense() {
 
   const members = group?.members || []
   const parsedAmount = parseFloat(amount) || 0
+  const itemsTotal = items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0)
 
   // Validation
   const selectedCount = Object.values(selectedMembers).filter(Boolean).length
@@ -100,12 +121,17 @@ export default function EditExpense() {
     .reduce((sum, [, val]) => sum + (parseFloat(val) || 0), 0)
   const customDiff = parsedAmount - customTotal
 
+  const isItemsValid = items.length > 0 && items.every(i => i.name.trim() && parseFloat(i.price) > 0)
+
   const isValid =
     title.trim() &&
-    parsedAmount > 0 &&
+    (splitType === 'item-based' ? itemsTotal > 0 : parsedAmount > 0) &&
     paidBy &&
-    selectedCount > 0 &&
-    (splitType === 'equal' || (splitType === 'custom' && Math.abs(customDiff) < 0.02))
+    (
+      (splitType === 'equal' && selectedCount > 0) ||
+      (splitType === 'custom' && selectedCount > 0 && Math.abs(customDiff) < 0.02) ||
+      (splitType === 'item-based' && isItemsValid)
+    )
 
   const handleToggleMember = (uid) => {
     setSelectedMembers((prev) => ({ ...prev, [uid]: !prev[uid] }))
@@ -113,6 +139,20 @@ export default function EditExpense() {
 
   const handleCustomAmount = (uid, val) => {
     setCustomAmounts((prev) => ({ ...prev, [uid]: val }))
+  }
+
+  const handleUpdateItem = (index, field, value) => {
+    const newItems = [...items]
+    newItems[index][field] = value
+    setItems(newItems)
+  }
+
+  const handleRemoveItem = (index) => {
+    setItems(items.filter((_, i) => i !== index))
+  }
+
+  const handleAddItem = () => {
+    setItems([...items, { id: Date.now(), name: '', price: '', quantity: 1, claims: [] }])
   }
 
   const handleSubmit = async (e) => {
@@ -132,8 +172,17 @@ export default function EditExpense() {
         icon: icon.trim(),
         paidBy,
         category,
-        items: [{ name: title.trim(), price: parsedAmount, quantity: 1 }],
         splitType,
+        totalAmount: splitType === 'item-based' ? itemsTotal : parsedAmount,
+        items: splitType === 'item-based' 
+          ? items.map(i => ({
+              _id: i._id,
+              name: i.name.trim(),
+              price: parseFloat(i.price) || 0,
+              quantity: parseInt(i.quantity) || 1,
+              claims: i.claims || []
+            }))
+          : [{ name: title.trim(), price: parsedAmount, quantity: 1, claims: [] }]
       }
 
       if (splitType === 'equal') {
@@ -226,7 +275,7 @@ export default function EditExpense() {
         {/* Amount */}
         <div>
           <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">
-            Amount
+            {splitType === 'item-based' ? 'Calculated Amount' : 'Amount'}
           </label>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-[#6b7280]">₹</span>
@@ -236,40 +285,45 @@ export default function EditExpense() {
               step="0.01"
               min="0"
               placeholder="0.00"
-              value={amount}
+              disabled={splitType === 'item-based'}
+              value={splitType === 'item-based' ? itemsTotal.toFixed(2) : amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full pl-8 pr-10 py-3 rounded-xl text-sm text-white bg-[#252525] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] transition-colors [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-full pl-8 pr-10 py-3 rounded-xl text-sm text-white bg-[#252525] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] transition-colors disabled:opacity-60 disabled:cursor-not-allowed [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center">
-              <button
-                type="button"
-                onClick={() => setAmount(prev => Math.max(0, (parseFloat(prev) || 0) + 1).toFixed(2))}
-                className="text-accent-green hover:text-white transition-colors"
-              >
-                <ChevronUp size={16} strokeWidth={2.5} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setAmount(prev => Math.max(0, (parseFloat(prev) || 0) - 1).toFixed(2))}
-                className="text-accent-green hover:text-white transition-colors mt-[2px]"
-              >
-                <ChevronDown size={16} strokeWidth={2.5} />
-              </button>
-            </div>
+            {splitType !== 'item-based' && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => setAmount(prev => Math.max(0, (parseFloat(prev) || 0) + 1).toFixed(2))}
+                  className="text-accent-green hover:text-white transition-colors"
+                >
+                  <ChevronUp size={16} strokeWidth={2.5} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAmount(prev => Math.max(0, (parseFloat(prev) || 0) - 1).toFixed(2))}
+                  className="text-accent-green hover:text-white transition-colors mt-[2px]"
+                >
+                  <ChevronDown size={16} strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
           </div>
           {/* Quick add buttons */}
-          <div className="flex gap-2 mt-3">
-            {[100, 500, 1000, 2000].map(val => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setAmount(prev => ((parseFloat(prev) || 0) + val).toFixed(2))}
-                className="flex-1 py-1.5 rounded-lg bg-[#1a1a1a] border border-white/[0.04] text-[12px] text-[#6b7280] hover:text-white hover:bg-[#252525] transition-colors"
-              >
-                +₹{val}
-              </button>
-            ))}
-          </div>
+          {splitType !== 'item-based' && (
+            <div className="flex gap-2 mt-3">
+              {[100, 500, 1000, 2000].map(val => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setAmount(prev => ((parseFloat(prev) || 0) + val).toFixed(2))}
+                  className="flex-1 py-1.5 rounded-lg bg-[#1a1a1a] border border-white/[0.04] text-[12px] text-[#6b7280] hover:text-white hover:bg-[#252525] transition-colors"
+                >
+                  +₹{val}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Paid by + Date row */}
@@ -328,7 +382,7 @@ export default function EditExpense() {
             Split
           </label>
           <div className="flex gap-1 bg-[#1a1a1a] rounded-xl p-1">
-            {['equal', 'custom'].map((type) => (
+            {['equal', 'custom', 'item-based'].map((type) => (
               <button
                 key={type}
                 type="button"
@@ -346,90 +400,188 @@ export default function EditExpense() {
           </div>
         </div>
 
-        {/* Member checklist */}
-        <div>
-          <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">
-            Split among
-          </label>
-          <div className="bg-[#252525] rounded-2xl overflow-hidden">
-            {members.map((m, i) => {
-              const uid = m.user._id
-              const checked = !!selectedMembers[uid]
-              return (
-                <div
-                  key={uid}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-3',
-                    i < members.length - 1 && 'border-b border-white/[0.04]'
-                  )}
-                >
-                  {/* Checkbox */}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleMember(uid)}
+        {/* Dynamic Split UI */}
+        {splitType === 'item-based' ? (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em]">
+                Items
+              </label>
+            </div>
+            
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={item.id} className="bg-[#252525] border border-white/[0.04] rounded-xl p-3 flex flex-wrap gap-3 items-center">
+                  <div className="flex-1 min-w-[120px]">
+                    <input
+                      type="text"
+                      placeholder="Item name"
+                      value={item.name}
+                      onChange={(e) => handleUpdateItem(idx, 'name', e.target.value)}
+                      className="w-full bg-transparent text-sm text-white placeholder:text-[#4b5563] focus:outline-none"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-[#1a1a1a] rounded-lg border border-white/[0.04]">
+                      <button 
+                        type="button" 
+                        onClick={() => handleUpdateItem(idx, 'quantity', Math.max(1, parseInt(item.quantity) - 1))}
+                        className="w-7 h-7 flex items-center justify-center text-[#6b7280] hover:text-white"
+                      >-</button>
+                      <span className="w-6 text-center text-xs text-white">{item.quantity}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => handleUpdateItem(idx, 'quantity', parseInt(item.quantity) + 1)}
+                        className="w-7 h-7 flex items-center justify-center text-[#6b7280] hover:text-white"
+                      >+</button>
+                    </div>
+
+                    <div className="w-24 relative flex items-center">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-[#6b7280]">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.price}
+                        onChange={(e) => handleUpdateItem(idx, 'price', e.target.value)}
+                        className="w-full pl-5 pr-6 py-1.5 bg-[#1a1a1a] rounded-lg border border-white/[0.04] text-sm text-white focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex flex-col items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(idx, 'price', Math.max(0, (parseFloat(item.price) || 0) + 1).toFixed(2))}
+                          className="text-accent-green hover:text-white transition-colors"
+                        >
+                          <ChevronUp size={12} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(idx, 'price', Math.max(0, (parseFloat(item.price) || 0) - 1).toFixed(2))}
+                          className="text-accent-green hover:text-white transition-colors mt-[1px]"
+                        >
+                          <ChevronDown size={12} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="w-16 text-right">
+                      <span className="text-xs text-[#6b7280]">
+                        ₹{((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)).toFixed(2)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(idx)}
+                      className="w-8 h-8 flex items-center justify-center text-[#4b5563] hover:text-danger transition-colors ml-1"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleAddItem}
+                className="text-sm font-medium text-accent-green hover:text-white transition-colors px-2 py-1"
+              >
+                + Add item
+              </button>
+
+              <div className="text-right">
+                <span className="text-sm text-[#6b7280]">Total: ₹{itemsTotal.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="text-[13px] font-medium text-[#6b7280] uppercase tracking-[0.08em] block mb-2">
+              Split among
+            </label>
+            <div className="bg-[#252525] rounded-2xl overflow-hidden">
+              {members.map((m, i) => {
+                const uid = m.user._id
+                const checked = !!selectedMembers[uid]
+                return (
+                  <div
+                    key={uid}
                     className={cn(
-                      'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors',
-                      checked
-                        ? 'bg-accent-green border-accent-green'
-                        : 'border-[#4b5563] bg-transparent'
+                      'flex items-center gap-3 px-4 py-3',
+                      i < members.length - 1 && 'border-b border-white/[0.04]'
                     )}
                   >
-                    {checked && <Check size={12} className="text-white" strokeWidth={3} />}
-                  </button>
+                    {/* Checkbox */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleMember(uid)}
+                      className={cn(
+                        'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors',
+                        checked
+                          ? 'bg-accent-green border-accent-green'
+                          : 'border-[#4b5563] bg-transparent'
+                      )}
+                    >
+                      {checked && <Check size={12} className="text-white" strokeWidth={3} />}
+                    </button>
 
-                  {/* Avatar + name */}
-                  <div className="w-8 h-8 rounded-lg bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] font-medium text-[#6b7280]">
-                      {getInitials(formatUsername(m.user))}
-                    </span>
+                    {/* Avatar + name */}
+                    <div className="w-8 h-8 rounded-lg bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-medium text-[#6b7280]">
+                        {getInitials(formatUsername(m.user))}
+                      </span>
+                    </div>
+                    <p className={cn(
+                      'text-[14px] font-medium flex-1 truncate',
+                      checked ? 'text-white' : 'text-[#4b5563]'
+                    )}>
+                      {formatUsername(m.user)}
+                      {m.user._id === user?._id ? ' (me)' : ''}
+                    </p>
+
+                    {/* Custom amount input */}
+                    {splitType === 'custom' && checked && (
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={customAmounts[uid] || ''}
+                        onChange={(e) => handleCustomAmount(uid, e.target.value)}
+                        className="w-24 px-3 py-1.5 rounded-lg text-sm text-white bg-[#1a1a1a] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] text-right"
+                      />
+                    )}
+
+                    {/* Equal amount display */}
+                    {splitType === 'equal' && checked && parsedAmount > 0 && (
+                      <span className="text-[13px] text-[#6b7280] flex-shrink-0">
+                        ₹{(parsedAmount / selectedCount).toFixed(2)}
+                      </span>
+                    )}
                   </div>
-                  <p className={cn(
-                    'text-[14px] font-medium flex-1 truncate',
-                    checked ? 'text-white' : 'text-[#4b5563]'
-                  )}>
-                    {formatUsername(m.user)}
-                    {m.user._id === user?._id ? ' (me)' : ''}
-                  </p>
+                )
+              })}
+            </div>
 
-                  {/* Custom amount input */}
-                  {splitType === 'custom' && checked && (
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={customAmounts[uid] || ''}
-                      onChange={(e) => handleCustomAmount(uid, e.target.value)}
-                      className="w-24 px-3 py-1.5 rounded-lg text-sm text-white bg-[#1a1a1a] border border-white/[0.06] placeholder:text-[#4b5563] focus:outline-none focus:border-[#6b7280] text-right"
-                    />
-                  )}
-
-                  {/* Equal amount display */}
-                  {splitType === 'equal' && checked && parsedAmount > 0 && (
-                    <span className="text-[13px] text-[#6b7280] flex-shrink-0">
-                      ₹{(parsedAmount / selectedCount).toFixed(2)}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Custom split validation */}
-          {splitType === 'custom' && parsedAmount > 0 && (
-            <p className={cn(
-              'text-[12px] mt-2 text-right',
-              Math.abs(customDiff) < 0.02 ? 'text-accent-green' : 'text-danger'
-            )}>
-              {Math.abs(customDiff) < 0.02
-                ? '✓ Splits match total'
-                : customDiff > 0
-                  ? `₹${customDiff.toFixed(2)} remaining`
-                  : `₹${Math.abs(customDiff).toFixed(2)} over`
+            {/* Custom split validation */}
+            {splitType === 'custom' && parsedAmount > 0 && (
+              <p className={cn(
+                'text-[12px] mt-2 text-right',
+                Math.abs(customDiff) < 0.02 ? 'text-accent-green' : 'text-danger'
+              )}>
+                {Math.abs(customDiff) < 0.02
+                  ? '✓ Splits match total'
+                  : customDiff > 0
+                    ? `₹${customDiff.toFixed(2)} remaining`
+                    : `₹${Math.abs(customDiff).toFixed(2)} over`
               }
             </p>
           )}
         </div>
+      )}
 
         {/* Submit */}
         <button

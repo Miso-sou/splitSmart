@@ -173,8 +173,8 @@ export default function AddExpense() {
         splitType,
         totalAmount: splitType === 'item-based' ? itemsTotal : parsedAmount,
         items: splitType === 'item-based' 
-          ? items.map(i => ({ name: i.name.trim(), price: parseFloat(i.price) || 0, quantity: parseInt(i.quantity) || 1, assignedTo: null }))
-          : [{ name: title.trim(), price: parsedAmount, quantity: 1 }]
+          ? items.map(i => ({ name: i.name.trim(), price: parseFloat(i.price) || 0, quantity: parseInt(i.quantity) || 1, claims: [] }))
+          : [{ name: title.trim(), price: parsedAmount, quantity: 1, claims: [] }]
       }
 
       if (splitType === 'equal') {
@@ -457,7 +457,7 @@ export default function AddExpense() {
                       >+</button>
                     </div>
 
-                    <div className="w-20 relative">
+                    <div className="w-24 relative flex items-center">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-[#6b7280]">₹</span>
                       <input
                         type="number"
@@ -465,8 +465,24 @@ export default function AddExpense() {
                         min="0"
                         value={item.price}
                         onChange={(e) => handleUpdateItem(idx, 'price', e.target.value)}
-                        className="w-full pl-5 pr-2 py-1.5 bg-[#1a1a1a] rounded-lg border border-white/[0.04] text-sm text-white focus:outline-none"
+                        className="w-full pl-5 pr-6 py-1.5 bg-[#1a1a1a] rounded-lg border border-white/[0.04] text-sm text-white focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
+                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex flex-col items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(idx, 'price', Math.max(0, (parseFloat(item.price) || 0) + 1).toFixed(2))}
+                          className="text-accent-green hover:text-white transition-colors"
+                        >
+                          <ChevronUp size={12} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(idx, 'price', Math.max(0, (parseFloat(item.price) || 0) - 1).toFixed(2))}
+                          className="text-accent-green hover:text-white transition-colors mt-[1px]"
+                        >
+                          <ChevronDown size={12} strokeWidth={2.5} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="w-16 text-right">
