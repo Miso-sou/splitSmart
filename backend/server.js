@@ -6,6 +6,7 @@ import cors from "cors";
 import connectDB from "./config/db.js";
 import morgan from "morgan";
 import authRoutes from "./routes/auth.routes.js"
+import userRoutes from "./routes/user.routes.js"
 import cookieParser from "cookie-parser";
 import errorHandler from "./middleware/error.middleware.js";
 import groupRoutes from "./routes/group.routes.js"
@@ -33,11 +34,12 @@ app.use(cors({
   origin: process.env.CLIENT_URL,
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser())
 app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes)
+app.use("/api/user", userRoutes)
 app.use("/api/group", groupRoutes)
 app.use("/api/expense", expenseRoutes)
 app.use("/api/bills", billRoutes)

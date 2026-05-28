@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Modal from '../shared/Modal'
 import { groupService } from '../../services/group.service'
 import { cn } from '../../lib/cn'
-import { X, UserX } from 'lucide-react'
+import { X, UserX, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -50,6 +50,25 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
       onGroupUpdated({ ...group, members: members.filter(m => m.user._id !== userId) })
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to remove member')
+    }
+  }
+
+  const handlePromoteMember = async (userId, username) => {
+    if (!window.confirm(`Are you sure you want to promote ${username} to admin?`)) return
+
+    try {
+      await groupService.promoteMember(group._id, userId)
+      toast.success(`${username} promoted to admin`)
+      setMembers(prev =>
+        prev.map(m => (m.user._id === userId ? { ...m, role: 'admin' } : m))
+      )
+      // Inform parent that members changed
+      onGroupUpdated({
+        ...group,
+        members: members.map(m => (m.user._id === userId ? { ...m, role: 'admin' } : m))
+      })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to promote member')
     }
   }
 
@@ -131,19 +150,33 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
                       {formatUsername(m.user)}
                       {isMe && <span className="text-[#6b7280] ml-1">(me)</span>}
                     </p>
-                    {m.role === 'admin' && (
+                    {m.role === 'admin' ? (
                       <p className="text-[11px] text-accent-green">Admin</p>
-                    )}
+                    ) : m.user.isGuest ? (
+                      <p className="text-[11px] text-[#fbbf24]">Guest</p>
+                    ) : null}
                   </div>
                   {!isMe && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(uid, formatUsername(m.user))}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6b7280] hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
-                      title="Remove member"
-                    >
-                      <UserX size={16} />
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {m.role !== 'admin' && !m.user.isGuest && (
+                        <button
+                          type="button"
+                          onClick={() => handlePromoteMember(uid, formatUsername(m.user))}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6b7280] hover:text-accent-green hover:bg-accent-green/10 transition-colors"
+                          title="Promote to admin"
+                        >
+                          <Shield size={16} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(uid, formatUsername(m.user))}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6b7280] hover:text-danger hover:bg-danger/10 transition-colors"
+                        title="Remove member"
+                      >
+                        <UserX size={16} />
+                      </button>
+                    </div>
                   )}
                 </div>
               )

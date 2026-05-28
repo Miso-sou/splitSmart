@@ -15,4 +15,7 @@ export const authService = {
 
   getMe: () =>
     api.get('/api/auth/me'),
+
+  upgradeGuest: (username, email, password) =>
+    api.post('/api/auth/upgrade', { username, email, password }),
 }

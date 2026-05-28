@@ -1,5 +1,6 @@
 import Group from "../models/group.model.js";
 import crypto from "crypto";
+import { User } from "../models/user.model.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import Expense from "../models/expense.model.js";
@@ -259,3 +260,135 @@ export const getSettlement = asyncHandler(async (req, res) => {
     memberStats
   });
 });
+
+// Leave a group
+export const leaveGroup = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const group = await Group.findById(id);
+
+  if (!group) {
+    throw new ApiError(404, "Group not found");
+  }
+
+  const member = group.members.find(
+    (m) => m.user.toString() === req.user._id.toString()
+  );
+
+  if (!member) {
+    throw new ApiError(403, "Not authorized — you are not a member of this group");
+  }
+
+  // 1. Calculate the user's balance in the group.
+  let expenses = await Expense.find({
+    group: id,
+    approvalStatus: "approved",
+  });
+
+  expenses = expenses.filter((e) => {
+    const splitsSum = e.splits.reduce((sum, split) => sum + split.amount, 0);
+    return Math.abs(splitsSum - e.totalAmount) < 1.0;
+  });
+
+  const settlements = await Settlement.find({ group: id });
+
+  const balance = {};
+
+  expenses.forEach((e) => {
+    const uid = e.paidBy.toString();
+    balance[uid] = (balance[uid] || 0) + e.totalAmount;
+    e.splits.forEach((split) => {
+      const splitUid = split.user.toString();
+      balance[splitUid] = (balance[splitUid] || 0) - split.amount;
+    });
+  });
+
+  settlements.forEach((s) => {
+    const fromId = s.from.toString();
+    const toId = s.to.toString();
+    balance[fromId] = (balance[fromId] || 0) + s.amount;
+    balance[toId] = (balance[toId] || 0) - s.amount;
+  });
+
+  const myUid = req.user._id.toString();
+  const net = Math.round((balance[myUid] || 0) * 100) / 100;
+
+  if (Math.abs(net) > 0.02) {
+    throw new ApiError(
+      400,
+      `You cannot leave this group because you have an unsettled balance of ${
+        net > 0 ? "+" : ""
+      }${net.toFixed(2)}. Please settle all balances before leaving.`
+    );
+  }
+
+  // 2. Admin validation: If the user is the only admin, verify if there are other members and prompt them to assign another admin.
+  if (member.role === "admin") {
+    const otherAdmins = group.members.filter(
+      (m) => m.role === "admin" && m.user.toString() !== myUid
+    );
+    if (otherAdmins.length === 0) {
+      const otherMembers = group.members.filter(
+        (m) => m.user.toString() !== myUid
+      );
+      if (otherMembers.length > 0) {
+        throw new ApiError(
+          400,
+          "You are the only admin of this group. Please promote another member to admin before leaving."
+        );
+      }
+    }
+  }
+
+  // 3. Remove the member. If they are the only member left in the group, we can delete the group automatically.
+  if (group.members.length <= 1) {
+    await group.deleteOne();
+    return res.status(200).json({
+      message: "Left group successfully. Since you were the only member, the group has been deleted.",
+      deleted: true,
+    });
+  }
+
+  group.members = group.members.filter(
+    (m) => m.user.toString() !== myUid
+  );
+  await group.save();
+
+  res.status(200).json({
+    message: "Left group successfully",
+    deleted: false,
+  });
+});
+
+export const promoteMember = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const member = req.group.members.find(
+    (m) => m.user.toString() === userId,
+  );
+
+  if (!member) {
+    throw new ApiError(404, "User is not a member of this group");
+  }
+
+  if (member.role === "admin") {
+    throw new ApiError(400, "User is already an admin");
+  }
+
+  const userToPromote = await User.findById(userId);
+  if (!userToPromote) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (userToPromote.isGuest) {
+    throw new ApiError(400, "Guest accounts cannot be promoted to admin. They must register first.");
+  }
+
+  member.role = "admin";
+  await req.group.save();
+
+  res.status(200).json({
+    message: "Member promoted to admin successfully",
+    group: req.group
+  });
+});
+

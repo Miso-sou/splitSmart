@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, MoreVertical, UserPlus, Settings, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, UserPlus, Settings, Trash2, LogOut } from 'lucide-react'
 import { groupService } from '../services/group.service'
 import { useAuth } from '../hooks/useAuth'
+import toast from 'react-hot-toast'
 import LoadingSpinner from '../components/shared/LoadingSpinner'
 import ExpensesTab from '../components/group/ExpensesTab'
 import BalancesTab from '../components/group/BalancesTab'
@@ -33,6 +34,19 @@ export default function GroupDetail() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
   const isAdmin = group?.members?.find(m => m.user._id === user?._id)?.role === 'admin'
+
+  const handleLeaveGroup = async () => {
+    const confirmLeave = window.confirm("Are you sure you want to leave this group?")
+    if (!confirmLeave) return
+
+    try {
+      const res = await groupService.leaveGroup(id)
+      toast.success(res.data.message || 'Left group successfully')
+      navigate('/dashboard')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to leave group')
+    }
+  }
 
   useEffect(() => {
     groupService.getGroupById(id)
@@ -87,8 +101,8 @@ export default function GroupDetail() {
             </h1>
           </div>
 
-          {/* Admin Menu */}
-          {isAdmin && (
+          {/* Actions Menu (available to all members) */}
+          {group && (
             <div className="relative flex-shrink-0">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -104,28 +118,47 @@ export default function GroupDetail() {
                     onClick={() => setIsMenuOpen(false)} 
                   />
                   <div className="absolute top-11 right-0 w-48 bg-[#252525] border border-white/[0.06] rounded-xl shadow-2xl overflow-hidden z-50 py-1">
-                    <button
-                      onClick={() => { setIsShareModalOpen(true); setIsMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[#2e2e2e] transition-colors"
-                    >
-                      <UserPlus size={16} className="text-[#6b7280]" />
-                      Add a member
-                    </button>
-                    <button
-                      onClick={() => { setIsEditModalOpen(true); setIsMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[#2e2e2e] transition-colors"
-                    >
-                      <Settings size={16} className="text-[#6b7280]" />
-                      Edit group
-                    </button>
-                    <div className="h-px bg-white/[0.04] my-1 mx-2" />
-                    <button
-                      onClick={() => { setIsDeleteModalOpen(true); setIsMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                      Delete group
-                    </button>
+                    {isAdmin ? (
+                      <>
+                        <button
+                          onClick={() => { setIsShareModalOpen(true); setIsMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[#2e2e2e] transition-colors"
+                        >
+                          <UserPlus size={16} className="text-[#6b7280]" />
+                          Add a member
+                        </button>
+                        <button
+                          onClick={() => { setIsEditModalOpen(true); setIsMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[#2e2e2e] transition-colors"
+                        >
+                          <Settings size={16} className="text-[#6b7280]" />
+                          Edit group
+                        </button>
+                        <button
+                          onClick={() => { handleLeaveGroup(); setIsMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
+                        >
+                          <LogOut size={16} />
+                          Leave group
+                        </button>
+                        <div className="h-px bg-white/[0.04] my-1 mx-2" />
+                        <button
+                          onClick={() => { setIsDeleteModalOpen(true); setIsMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                          Delete group
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => { handleLeaveGroup(); setIsMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
+                      >
+                        <LogOut size={16} />
+                        Leave group
+                      </button>
+                    )}
                   </div>
                 </>
               )}

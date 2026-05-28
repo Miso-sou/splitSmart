@@ -185,7 +185,7 @@ export const guestLogin = asyncHandler(async (req, res) => {
 })
 
 export const upgradeGuest = asyncHandler(async (req, res) => {
-    const {email, password} = req.body
+    const {email, password, username} = req.body
 
     if(!req.user.isGuest){
         throw new ApiError(400, "You already are a registered user")
@@ -200,17 +200,40 @@ export const upgradeGuest = asyncHandler(async (req, res) => {
         throw new ApiError(409, "Email already in use")
     }
 
+    if (username) {
+        const trimmedUsername = username.trim()
+        if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
+            throw new ApiError(400, "Username must be between 3 and 20 characters")
+        }
+        const usernameExists = await User.findOne({ username: trimmedUsername })
+        if (usernameExists && usernameExists._id.toString() !== req.user._id.toString()) {
+            throw new ApiError(409, "Username already in use")
+        }
+        req.user.username = trimmedUsername
+    }
+
     req.user.email = email
     req.user.password = password
     req.user.isGuest = false
 
     await req.user.save()
 
+    const accessToken = generateAccessToken(req.user._id)
+    const refreshToken = generateRefreshToken(req.user._id)
+
+    res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000
+    })
+
     res.json({
         message: "Account registered successfully",
         _id: req.user._id,
         username: req.user.username,
         email: req.user.email,
-        isGuest: false
+        isGuest: false,
+        accessToken
     })
 })

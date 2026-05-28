@@ -27,4 +27,10 @@ export const groupService = {
 
   deleteGroup: (id) =>
     api.delete(`/api/group/${id}`),
+
+  leaveGroup: (id) =>
+    api.post(`/api/group/${id}/leave`),
+
+  promoteMember: (groupId, userId) =>
+    api.put(`/api/group/${groupId}/members/${userId}/promote`),
 }

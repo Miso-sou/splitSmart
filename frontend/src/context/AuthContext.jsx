@@ -40,8 +40,20 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  const upgrade = async (username, email, password) => {
+    const res = await authService.upgradeGuest(username, email, password)
+    if (res.data.accessToken) {
+      localStorage.setItem('splitsmart_token', res.data.accessToken)
+    }
+    setUser(res.data)
+  }
+
+  const updateUser = (updatedData) => {
+    setUser(prev => prev ? { ...prev, ...updatedData } : null)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginAsGuest, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginAsGuest, logout, upgrade, updateUser }}>
       {children}
     </AuthContext.Provider>
   )
