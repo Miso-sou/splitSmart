@@ -51,6 +51,10 @@ app.get("/", (req, res) => {
   res.send("API running");
 });
 
+app.get("/healthz", (req, res) => {
+  res.status(200).send("OK");
+});
+
 // Central error handler — must be after all routes
 app.use(errorHandler);
 
