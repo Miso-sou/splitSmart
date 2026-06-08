@@ -11,19 +11,24 @@ export const protect = asyncHandler(async (req, res, next) => {
         throw new ApiError(401, "No token provided")
     }
 
-    const token = authHeader.split(" ")[1] // create an array of header and put the token in the first index.
+    const token = authHeader.split(" ")[1]
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET) // returns an object with id, iat and expiry.
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET)
+        const user = await User.findById(decoded.id).select("-password")
 
-    const user = await User.findById(decoded.id).select("-password")
+        if(!user){
+            throw new ApiError(401, "User not found")
+        }
 
-    if(!user){
-        throw new ApiError(401, "User not found")
+        req.user = user
+        next();
+    } catch (error) {
+        if (error.name === "TokenExpiredError") {
+            throw new ApiError(401, "Token expired")
+        }
+        throw new ApiError(401, "Not authorized, token failed")
     }
-
-    req.user = user
-
-    next();
 })
 
 export const requireAdmin = asyncHandler(async (req, res, next) => {

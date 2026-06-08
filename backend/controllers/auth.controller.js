@@ -5,7 +5,7 @@ import ApiError from "../utils/ApiError.js";
 import crypto from "crypto"
 
 const generateAccessToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" })
+    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30m" })
 }
 
 const generateRefreshToken = (id) => {
@@ -82,7 +82,7 @@ export const loginUser = asyncHandler(async (req, res) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 1000
+        maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
     res.json({
@@ -115,24 +115,29 @@ export const refreshToken = asyncHandler(async (req, res) => {
         throw new ApiError(401, "No refresh token")
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET)
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET)
 
-    const user = await User.findById(decoded.id)
+        const user = await User.findById(decoded.id)
 
-    if(!user){
-        throw new ApiError(401, "User doesn't exist")
+        if(!user){
+            throw new ApiError(401, "User doesn't exist")
+        }
+
+        const newAccessToken = generateAccessToken(user._id)
+        const newRefreshToken = generateRefreshToken(user._id)
+
+        res.cookie("refreshToken", newRefreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        })
+
+        res.json({accessToken: newAccessToken})
+    } catch (error) {
+        throw new ApiError(401, "Invalid or expired refresh token")
     }
-
-    const newAccessToken = generateAccessToken(user._id)
-    const newRefreshToken = generateRefreshToken(user._id)
-
-    res.cookie("refreshToken", newRefreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict"
-    })
-
-    res.json({accessToken: newAccessToken})
 })
 
 export const guestLogin = asyncHandler(async (req, res) => {
