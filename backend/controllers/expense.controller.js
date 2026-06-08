@@ -180,9 +180,9 @@ export const updateExpense = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Expense not found")
     }
 
-    // Guests cannot edit expenses — frontend should redirect to login/upgrade page
-    if (req.user.isGuest) {
-        throw new ApiError(403, "Guest users cannot edit expenses. Please register to edit.")
+    // Guests cannot edit expenses unless they created them
+    if (req.user.isGuest && expense.createdBy.toString() !== req.user._id.toString()) {
+        throw new ApiError(403, "Guest users cannot edit expenses created by others. Please register to edit.")
     }
 
     // Only the creator or group admin can edit

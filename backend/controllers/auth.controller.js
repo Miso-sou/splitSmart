@@ -5,11 +5,11 @@ import ApiError from "../utils/ApiError.js";
 import crypto from "crypto"
 
 const generateAccessToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" })
+    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" })
 }
 
 const generateRefreshToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "60d" })
+    return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "30d" })
 }
 
 export const registerUser = asyncHandler(async (req, res) => {
@@ -82,7 +82,7 @@ export const loginUser = asyncHandler(async (req, res) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 1000
+        maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
     res.json({
@@ -147,6 +147,26 @@ export const guestLogin = asyncHandler(async (req, res) => {
     if (guestId && guestId.match(/^[0-9a-fA-F]{24}$/)) {
         user = await User.findById(guestId)
     }
+
+        if (user && user.isGuest) {
+        const accessToken = generateAccessToken(user._id)
+        const refreshToken = generateRefreshToken(user._id)
+
+        res.cookie("refreshToken", refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        })
+
+        return res.status(200).json({
+            _id: user._id,
+            username: user.username,
+            isGuest: true,
+            accessToken
+        })
+    }
+
 
     if (!user || !user.isGuest) {
         // generate unique username for guest like John_a3fd4gh to avoid collsions with real usernames

@@ -1,14 +1,19 @@
-import { createContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
+import { AuthContext } from './AuthContext'
 
 export const SocketContext = createContext(null)
 
 export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null)
   const socketRef = useRef(null)
+  const { token } = useContext(AuthContext)
 
   useEffect(() => {
-    const token = localStorage.getItem('splitsmart_token')
+    if(!token) {
+      setSocket(null)
+      return
+    }
 
     const newSocket = io(import.meta.env.VITE_API_URL || '', {
       auth: { token },
@@ -37,7 +42,7 @@ export function SocketProvider({ children }) {
       newSocket.disconnect()
       socketRef.current = null
     }
-  }, [])
+  }, [token])
 
   const joinGroup = (groupId) => {
     if (socketRef.current?.connected) {
