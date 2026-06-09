@@ -9,7 +9,7 @@ const generateAccessToken = (id) => {
 }
 
 const generateRefreshToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "60d" })
+    return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "30d" })
 }
 
 export const registerUser = asyncHandler(async (req, res) => {
@@ -40,7 +40,7 @@ export const registerUser = asyncHandler(async (req, res) => {
 
     const accessToken = generateAccessToken(user._id)
     const refreshToken = generateRefreshToken(user._id)
-    
+
     res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -57,27 +57,27 @@ export const registerUser = asyncHandler(async (req, res) => {
 })
 
 export const loginUser = asyncHandler(async (req, res) => {
-    const {email, password} = req.body
+    const { email, password } = req.body
 
-    if(!email || !password){
+    if (!email || !password) {
         throw new ApiError(400, "All fields are required")
     }
 
     const user = await User.findOne({ email })
 
-    if(!user){
+    if (!user) {
         throw new ApiError(401, "Invalid credentials")
     }
 
     const isMatch = await user.comparePassword(password)
 
-    if(!isMatch){
+    if (!isMatch) {
         throw new ApiError(401, "Invalid credentials")
     }
 
     const accessToken = generateAccessToken(user._id)
     const refreshToken = generateRefreshToken(user._id)
-    
+
     res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -101,7 +101,7 @@ export const logoutUser = asyncHandler(async (req, res) => {
         expires: new Date(0)
     })
 
-    res.status(200).json({message: "Logout Successful"})
+    res.status(200).json({ message: "Logout Successful" })
 })
 
 export const getMe = asyncHandler(async (req, res) => {
@@ -111,7 +111,7 @@ export const getMe = asyncHandler(async (req, res) => {
 export const refreshToken = asyncHandler(async (req, res) => {
     const token = req.cookies.refreshToken
 
-    if(!token){
+    if (!token) {
         throw new ApiError(401, "No refresh token")
     }
 
@@ -120,7 +120,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
 
         const user = await User.findById(decoded.id)
 
-        if(!user){
+        if (!user) {
             throw new ApiError(401, "User doesn't exist")
         }
 
@@ -134,16 +134,16 @@ export const refreshToken = asyncHandler(async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000
         })
 
-        res.json({accessToken: newAccessToken})
+        res.json({ accessToken: newAccessToken })
     } catch (error) {
         throw new ApiError(401, "Invalid or expired refresh token")
     }
 })
 
 export const guestLogin = asyncHandler(async (req, res) => {
-    const {displayName, guestId} = req.body
-    
-    if(!displayName || displayName.trim().length < 2){
+    const { displayName, guestId } = req.body
+
+    if (!displayName || displayName.trim().length < 2) {
         throw new ApiError(400, "Display name is required (at least 2 characters long")
     }
 
@@ -190,18 +190,18 @@ export const guestLogin = asyncHandler(async (req, res) => {
 })
 
 export const upgradeGuest = asyncHandler(async (req, res) => {
-    const {email, password, username} = req.body
+    const { email, password, username } = req.body
 
-    if(!req.user.isGuest){
+    if (!req.user.isGuest) {
         throw new ApiError(400, "You already are a registered user")
     }
 
-    if(!email || !password){
+    if (!email || !password) {
         throw new ApiError(400, "Email and password are required to register")
     }
 
-    const emailExists = await User.findOne({email})
-    if(emailExists){
+    const emailExists = await User.findOne({ email })
+    if (emailExists) {
         throw new ApiError(409, "Email already in use")
     }
 
