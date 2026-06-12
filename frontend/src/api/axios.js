@@ -27,11 +27,11 @@ api.interceptors.response.use(
     const original = err.config
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true
-      
+
       // If a refresh is not already in progress, start one
       if (!refreshPromise) {
         refreshPromise = axios.post(
-          `${import.meta.env.VITE_API_URL}/api/auth/refresh`,
+          `${import.meta.env.VITE_API_URL || ''}/api/auth/refresh`,
           {},
           { withCredentials: true }
         ).then(res => {

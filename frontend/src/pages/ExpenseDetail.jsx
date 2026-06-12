@@ -93,7 +93,7 @@ export default function ExpenseDetail() {
 
   const isCreator = expense?.createdBy?._id === user?._id || expense?.createdBy === user?._id
   const isAdmin = group?.members?.find(m => m.user?._id === user?._id || m.user === user?._id)?.role === 'admin'
-  const canEdit = isCreator || isAdmin
+  const canEdit = isAdmin || (isCreator && (!user?.isGuest || expense?.approvalStatus === 'approved'))
 
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this expense?')) return

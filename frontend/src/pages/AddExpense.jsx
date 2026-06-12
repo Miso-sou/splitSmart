@@ -189,7 +189,7 @@ export default function AddExpense() {
       const res = await expenseService.createExpense(payload)
       const newExpenseId = res.data._id
 
-      if (splitType === 'item-based') {
+      if (splitType === 'item-based' && res.data.approvalStatus === 'approved') {
         // Broadcast via message route
         await api.post(`/api/group/${groupId}/messages`, {
           text: `📋 Bill split: ${title.trim()} — ₹${itemsTotal.toFixed(2)}`,
@@ -338,6 +338,20 @@ export default function AddExpense() {
               </button>
             ))}
           </div>
+
+          {splitType === 'item-based' ? (
+            items.length > 0 && itemsTotal <= 0 && (
+              <p className="text-[12px] text-danger mt-2 text-left">
+                Amount must be greater than 0
+              </p>
+            )
+          ) : (
+            amount !== '' && parsedAmount <= 0 && (
+              <p className="text-[12px] text-danger mt-2 text-left">
+                Amount must be greater than 0
+              </p>
+            )
+          )}
         </div>
 
         {/* Paid by + Date row */}

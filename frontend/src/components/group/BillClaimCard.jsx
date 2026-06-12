@@ -159,6 +159,10 @@ export default function BillClaimCard({ message }) {
           const isClaimedByMe = !!myClaim
           const myClaimedQty = myClaim ? myClaim.quantity : 0
           
+          const totalClaimedQty = claims.reduce((sum, c) => sum + (Number(c.quantity) || 0), 0)
+          const remainingQty = Math.max(0, item.quantity - totalClaimedQty)
+          const unclaimedAmount = remainingQty * item.price
+
           const claimersCount = claims.length
           const totalCost = item.price * item.quantity
           const isSubmitting = submittingItemId === item._id
@@ -263,9 +267,9 @@ export default function BillClaimCard({ message }) {
                           })}
 
                           {/* Unclaimed indicator */}
-                          {claimersCount === 0 && (
+                          {remainingQty > 0 && (
                             <span className="text-[10px] text-yellow-500 bg-[rgba(234,179,8,0.06)] px-2 py-0.5 rounded-full border border-yellow-500/10">
-                              Unclaimed
+                              Unclaimed {item.quantity > 1 && `×${remainingQty}`}
                             </span>
                           )}
                         </>

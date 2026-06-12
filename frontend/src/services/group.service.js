@@ -33,4 +33,7 @@ export const groupService = {
 
   promoteMember: (groupId, userId) =>
     api.put(`/api/group/${groupId}/members/${userId}/promote`),
+
+  demoteMember: (groupId, userId) =>
+    api.put(`/api/group/${groupId}/members/${userId}/demote`),
 }

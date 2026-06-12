@@ -6,7 +6,9 @@ import { ROUTES } from '../constants/routes'
 import AuthLayout from '../layouts/AuthLayout'
 import GlassCard from '../components/shared/GlassCard'
 import GlassInput from '../components/shared/GlassInput'
+import PasswordInput from '../components/shared/PasswordInput'
 import GlassButton from '../components/shared/GlassButton'
+import { cn } from '../lib/cn'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -62,8 +64,7 @@ export default function Register() {
             disabled={loading}
             required
           />
-          <GlassInput
-            type="password"
+          <PasswordInput
             placeholder="Password (min 8 chars)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -71,6 +72,33 @@ export default function Register() {
             required
             minLength={8}
           />
+          
+          {/* Strength indicator */}
+          {password && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-all duration-300',
+                    password.length < 8 ? 'w-1/4 bg-danger' :
+                    password.length < 12 ? 'w-2/4 bg-amber-400' :
+                    password.length < 16 ? 'w-3/4 bg-accent-green/70' :
+                    'w-full bg-accent-green'
+                  )}
+                />
+              </div>
+              <span className={cn(
+                'text-[10px] font-medium shrink-0',
+                password.length < 8 ? 'text-danger' :
+                password.length < 12 ? 'text-amber-400' :
+                'text-accent-green'
+              )}>
+                {password.length < 8 ? 'Too short' :
+                 password.length < 12 ? 'Fair' :
+                 password.length < 16 ? 'Good' : 'Strong'}
+              </span>
+            </div>
+          )}
           
           {error && <p className="text-danger text-xs text-left">{error}</p>}
           

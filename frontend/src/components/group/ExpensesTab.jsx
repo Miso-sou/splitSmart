@@ -92,21 +92,28 @@ function EmptyState() {
   )
 }
 
-export default function ExpensesTab({ groupId }) {
+export default function ExpensesTab({ groupId, expenses: propExpenses, loading: propLoading, error: propError }) {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    expenseService.getGroupExpenses(groupId)
-      .then((res) => {
-        // API returns either an array or { expenses: [] }
-        const data = Array.isArray(res.data) ? res.data : (res.data.expenses || [])
-        setExpenses(data)
-      })
-      .catch((err) => setError(err.response?.data?.message || 'Failed to load expenses'))
-      .finally(() => setLoading(false))
-  }, [groupId])
+    if (propExpenses !== undefined) {
+      setExpenses(propExpenses)
+      setLoading(propLoading)
+      setError(propError)
+    } else {
+      setLoading(true)
+      expenseService.getGroupExpenses(groupId)
+        .then((res) => {
+          // API returns either an array or { expenses: [] }
+          const data = Array.isArray(res.data) ? res.data : (res.data.expenses || [])
+          setExpenses(data)
+        })
+        .catch((err) => setError(err.response?.data?.message || 'Failed to load expenses'))
+        .finally(() => setLoading(false))
+    }
+  }, [groupId, propExpenses, propLoading, propError])
 
   if (loading) {
     return (

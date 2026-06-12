@@ -10,7 +10,7 @@ function formatAmount(val) {
   return Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export default function BalancesTab({ groupId, user }) {
+export default function BalancesTab({ groupId, user, data: propData, loading: propLoading, error: propError, refetch: propRefetch }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -23,17 +23,27 @@ export default function BalancesTab({ groupId, user }) {
   const [settleAmount, setSettleAmount] = useState('')
 
   const fetchSettlements = () => {
-    setLoading(true)
-    setError(false)
-    groupService.getSettlement(groupId)
-      .then((res) => setData(res.data))
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
+    if (propRefetch) {
+      propRefetch()
+    } else {
+      setLoading(true)
+      setError(false)
+      groupService.getSettlement(groupId)
+        .then((res) => setData(res.data))
+        .catch(() => setError(true))
+        .finally(() => setLoading(false))
+    }
   }
 
   useEffect(() => {
-    fetchSettlements()
-  }, [groupId])
+    if (propData !== undefined) {
+      setData(propData)
+      setLoading(propLoading)
+      setError(propError)
+    } else {
+      fetchSettlements()
+    }
+  }, [groupId, propData, propLoading, propError])
 
   if (loading) {
     return (

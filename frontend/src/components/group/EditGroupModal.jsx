@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Modal from '../shared/Modal'
 import { groupService } from '../../services/group.service'
 import { cn } from '../../lib/cn'
-import { X, UserX, Shield } from 'lucide-react'
+import { X, UserX, Shield, ShieldAlert } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -69,6 +69,25 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
       })
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to promote member')
+    }
+  }
+
+  const handleDemoteMember = async (userId, username) => {
+    if (!window.confirm(`Are you sure you want to demote ${username} to member?`)) return
+
+    try {
+      await groupService.demoteMember(group._id, userId)
+      toast.success(`${username} demoted to member`)
+      setMembers(prev =>
+        prev.map(m => (m.user._id === userId ? { ...m, role: 'member' } : m))
+      )
+      // Inform parent that members changed
+      onGroupUpdated({
+        ...group,
+        members: members.map(m => (m.user._id === userId ? { ...m, role: 'member' } : m))
+      })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to demote member')
     }
   }
 
@@ -158,15 +177,26 @@ export default function EditGroupModal({ isOpen, onClose, group, onGroupUpdated 
                   </div>
                   {!isMe && (
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {m.role !== 'admin' && !m.user.isGuest && (
+                      {m.role === 'admin' ? (
                         <button
                           type="button"
-                          onClick={() => handlePromoteMember(uid, formatUsername(m.user))}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6b7280] hover:text-accent-green hover:bg-accent-green/10 transition-colors"
-                          title="Promote to admin"
+                          onClick={() => handleDemoteMember(uid, formatUsername(m.user))}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6b7280] hover:text-yellow-500 hover:bg-yellow-500/10 transition-colors"
+                          title="Demote to member"
                         >
-                          <Shield size={16} />
+                          <ShieldAlert size={16} />
                         </button>
+                      ) : (
+                        !m.user.isGuest && (
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteMember(uid, formatUsername(m.user))}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6b7280] hover:text-accent-green hover:bg-accent-green/10 transition-colors"
+                            title="Promote to admin"
+                          >
+                            <Shield size={16} />
+                          </button>
+                        )
                       )}
                       <button
                         type="button"

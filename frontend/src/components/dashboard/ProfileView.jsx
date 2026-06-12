@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   KeyRound, ArrowUpCircle, LogOut, Camera, X, Check,
-  Pencil, Shield, Users, AlertTriangle, Eye, EyeOff
+  Pencil, Shield, Users, AlertTriangle, Lock
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import GlassButton from '../shared/GlassButton'
 import GlassInput from '../shared/GlassInput'
+import PasswordInput from '../shared/PasswordInput'
 import { cn } from '../../lib/cn'
 import toast from 'react-hot-toast'
 import { userService } from '../../services/user.service'
@@ -72,30 +73,6 @@ function ProfileModal({ isOpen, onClose, title, subtitle, children }) {
   )
 }
 
-/* ─── Password Input with eye toggle ─── */
-function PasswordInput({ label, value, onChange, placeholder, id }) {
-  const [show, setShow] = useState(false)
-  return (
-    <div className="relative">
-      <GlassInput
-        id={id}
-        label={label}
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-      />
-      <button
-        type="button"
-        onClick={() => setShow(!show)}
-        className="absolute right-3 top-[34px] text-[#6b7280] hover:text-white transition-colors"
-        tabIndex={-1}
-      >
-        {show ? <EyeOff size={14} /> : <Eye size={14} />}
-      </button>
-    </div>
-  )
-}
 
 /* ═══════════════ MAIN COMPONENT ═══════════════ */
 export default function ProfileView() {
@@ -434,9 +411,15 @@ export default function ProfileView() {
 
           {/* Email Field (read-only) */}
           <div>
-            <label className="text-[12px] font-medium text-[#6b7280] mb-1.5 block">Email</label>
-            <div className="w-full px-4 py-2.5 rounded-xl text-sm text-[#9ca3af] bg-white/[0.05] border border-white/[0.06]">
-              {user?.email || <span className="italic text-[#4b5563]">Not registered</span>}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[12px] font-medium text-[#6b7280]">Email</label>
+              <span className="text-[10px] text-[#4b5563] flex items-center gap-1 select-none"></span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-white/30 bg-white/[0.02] border border-white/[0.03] cursor-not-allowed select-none">
+              <span className="truncate">
+                {user?.email || <span className="italic text-white/20">Not registered</span>}
+              </span>
+              <Lock size={12} className="text-white/20 flex-shrink-0 ml-2" />
             </div>
           </div>
 
@@ -679,6 +662,32 @@ export default function ProfileView() {
               onChange={(e) => setUpPass(e.target.value)}
               placeholder="Min. 8 characters"
             />
+            {/* Strength indicator */}
+            {upPass && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      upPass.length < 8 ? 'w-1/4 bg-danger' :
+                      upPass.length < 12 ? 'w-2/4 bg-amber-400' :
+                      upPass.length < 16 ? 'w-3/4 bg-accent-green/70' :
+                      'w-full bg-accent-green'
+                    )}
+                  />
+                </div>
+                <span className={cn(
+                  'text-[10px] font-medium shrink-0',
+                  upPass.length < 8 ? 'text-danger' :
+                  upPass.length < 12 ? 'text-amber-400' :
+                  'text-accent-green'
+                )}>
+                  {upPass.length < 8 ? 'Too short' :
+                   upPass.length < 12 ? 'Fair' :
+                   upPass.length < 16 ? 'Good' : 'Strong'}
+                </span>
+              </div>
+            )}
             <PasswordInput
               id="upgrade-confirm-password"
               label="Confirm Password"

@@ -6,6 +6,7 @@ import { ROUTES } from '../constants/routes'
 import AuthLayout from '../layouts/AuthLayout'
 import GlassCard from '../components/shared/GlassCard'
 import GlassInput from '../components/shared/GlassInput'
+import PasswordInput from '../components/shared/PasswordInput'
 import GlassButton from '../components/shared/GlassButton'
 
 export default function Login() {
@@ -70,8 +71,7 @@ export default function Login() {
         ) : (
           <form onSubmit={handleStep2} className="w-full space-y-3">
             <p className="text-sm text-white/70 bg-white/[0.04] p-2 rounded-lg border border-white/[0.05]">{email}</p>
-            <GlassInput
-              type="password"
+            <PasswordInput
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

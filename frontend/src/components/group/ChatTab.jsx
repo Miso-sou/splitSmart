@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { MessageCircle, Send } from 'lucide-react'
+import { MessageCircle, Send, X } from 'lucide-react'
 import { useSocket } from '../../hooks/useSocket'
 import { chatService } from '../../services/chat.service'
 import ChatMessage from './ChatMessage'
@@ -12,6 +12,7 @@ export default function ChatTab({ groupId, user }) {
   const [loading, setLoading] = useState(true)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [replyingTo, setReplyingTo] = useState(null)
 
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
@@ -62,6 +63,13 @@ export default function ChatTab({ groupId, user }) {
     scrollToBottom()
   }, [messages, loading, scrollToBottom])
 
+  // Auto-focus textarea on mount, group change, or when replying
+  useEffect(() => {
+    if (!loading && textareaRef.current) {
+      textareaRef.current.focus()
+    }
+  }, [groupId, replyingTo, loading])
+
   // Auto-resize textarea
   const handleTextChange = (e) => {
     setText(e.target.value)
@@ -78,8 +86,13 @@ export default function ChatTab({ groupId, user }) {
     if (!trimmed || sending) return
 
     setSending(true)
-    sendMessage(groupId, { senderId: user._id, text: trimmed })
+    sendMessage(groupId, { 
+      senderId: user._id, 
+      text: trimmed,
+      replyTo: replyingTo?._id || null
+    })
     setText('')
+    setReplyingTo(null)
     setSending(false)
 
     // Reset textarea height
@@ -92,6 +105,8 @@ export default function ChatTab({ groupId, user }) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    } else if (e.key === 'Escape' && replyingTo) {
+      setReplyingTo(null)
     }
   }
 
@@ -131,6 +146,7 @@ export default function ChatTab({ groupId, user }) {
                 key={msg._id}
                 message={msg}
                 isOwn={msg.sender?._id === user?._id}
+                onReply={setReplyingTo}
               />
             ))}
           </>
@@ -141,9 +157,31 @@ export default function ChatTab({ groupId, user }) {
 
       {/* Input bar */}
       <div className="border-t border-surface-border bg-[#0f1010] px-2 py-2">
+        {replyingTo && (
+          <div className="flex items-center justify-between bg-surface border border-surface-border border-b-0 rounded-t-lg px-3 py-2 ml-1 mr-12 -mb-px text-xs">
+            <div className="flex-1 min-w-0 border-l-2 border-accent-green pl-2 text-left">
+              <p className="font-semibold text-accent-green truncate">
+                Replying to {replyingTo.sender?.username || 'User'}
+              </p>
+              <p className="text-muted truncate mt-0.5">
+                {replyingTo.expenseId ? (replyingTo.text || '📋 Bill Split') : (replyingTo.text || '📷 Image')}
+              </p>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              className="text-[#6b7280] hover:text-white ml-2 transition-colors flex-shrink-0"
+              type="button"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           {/* Text input */}
-          <div className="flex-1 bg-surface border border-surface-border rounded-lg px-3 py-2 ml-1">
+          <div className={cn(
+            "flex-1 bg-surface border border-surface-border rounded-lg px-3 py-2 ml-1",
+            replyingTo ? "rounded-t-none" : ""
+          )}>
             <textarea
               ref={textareaRef}
               value={text}

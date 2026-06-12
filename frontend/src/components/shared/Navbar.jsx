@@ -7,7 +7,7 @@ export default function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-5 py-4">
-      <Link to={ROUTES.HOME} className="font-display text-xl font-bold tracking-tight text-white">
+      <Link to={user ? ROUTES.DASHBOARD : ROUTES.HOME} className="font-display text-xl font-bold tracking-tight text-white">
         split<span className="text-accent-green">smart</span>
       </Link>
       <div className="flex items-center gap-3 text-sm">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Users } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
@@ -16,8 +16,13 @@ export default function Landing() {
   const [error, setError] = useState('')
 
   // If user is already logged in, they shouldn't see landing page
+  useEffect(() => {
+    if (user) {
+      navigate(ROUTES.DASHBOARD, { replace: true })
+    }
+  }, [user, navigate])
+
   if (user) {
-    navigate(ROUTES.DASHBOARD, { replace: true })
     return null
   }
 

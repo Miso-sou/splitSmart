@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, MoreVertical, UserPlus, Settings, Trash2, LogOut } from 'lucide-react'
 import { groupService } from '../services/group.service'
+import { expenseService } from '../services/expense.service'
 import { useAuth } from '../hooks/useAuth'
 import toast from 'react-hot-toast'
 import LoadingSpinner from '../components/shared/LoadingSpinner'
@@ -26,6 +27,16 @@ export default function GroupDetail() {
   const [group, setGroup] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // States for parallel data fetching
+  const [expenses, setExpenses] = useState([])
+  const [expensesLoading, setExpensesLoading] = useState(true)
+  const [expensesError, setExpensesError] = useState(null)
+
+  const [balancesData, setBalancesData] = useState(null)
+  const [balancesLoading, setBalancesLoading] = useState(true)
+  const [balancesError, setBalancesError] = useState(false)
+
   const [activeTab, setActiveTab] = useState('expenses')
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -48,11 +59,55 @@ export default function GroupDetail() {
     }
   }
 
+  const fetchData = async () => {
+    setLoading(true)
+    setExpensesLoading(true)
+    setBalancesLoading(true)
+    setError(null)
+    setExpensesError(null)
+    setBalancesError(false)
+
+    const groupPromise = groupService.getGroupById(id)
+      .then((res) => {
+        setGroup(res.data)
+      })
+      .catch((err) => {
+        setError(err.response?.data?.message || 'Failed to load group')
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+
+    const expensesPromise = expenseService.getGroupExpenses(id)
+      .then((res) => {
+        const data = Array.isArray(res.data) ? res.data : (res.data.expenses || [])
+        setExpenses(data)
+      })
+      .catch((err) => {
+        setExpensesError(err.response?.data?.message || 'Failed to load expenses')
+      })
+      .finally(() => {
+        setExpensesLoading(false)
+      })
+
+    const balancesPromise = groupService.getSettlement(id)
+      .then((res) => {
+        setBalancesData(res.data)
+      })
+      .catch(() => {
+        setBalancesError(true)
+      })
+      .finally(() => {
+        setBalancesLoading(false)
+      })
+
+    await Promise.all([groupPromise, expensesPromise, balancesPromise])
+  }
+
   useEffect(() => {
-    groupService.getGroupById(id)
-      .then((res) => setGroup(res.data))
-      .catch((err) => setError(err.response?.data?.message || 'Failed to load group'))
-      .finally(() => setLoading(false))
+    if (id) {
+      fetchData()
+    }
   }, [id])
 
   if (loading) {
@@ -194,10 +249,24 @@ export default function GroupDetail() {
           : "px-4 pb-24 mt-2"
       )}>
         {activeTab === 'expenses' && (
-          <ExpensesTab groupId={id} group={group} user={user} />
+          <ExpensesTab 
+            groupId={id} 
+            group={group} 
+            user={user} 
+            expenses={expenses} 
+            loading={expensesLoading} 
+            error={expensesError} 
+          />
         )}
         {activeTab === 'balances' && (
-          <BalancesTab groupId={id} user={user} />
+          <BalancesTab 
+            groupId={id} 
+            user={user} 
+            data={balancesData} 
+            loading={balancesLoading} 
+            error={balancesError} 
+            refetch={fetchData} 
+          />
         )}
         {activeTab === 'chat' && (
           <ChatTab groupId={id} user={user} />

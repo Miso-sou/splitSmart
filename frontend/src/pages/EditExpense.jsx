@@ -55,6 +55,11 @@ export default function EditExpense() {
         const expense = expensesData.find((e) => e._id === expenseId)
         
         if (expense) {
+          if (user?.isGuest && expense.approvalStatus !== 'approved') {
+            toast.error('You cannot edit this expense until it is approved by an admin.')
+            navigate(`/groups/${groupId}/expenses/${expenseId}`)
+            return
+          }
           setTitle(expense.description || '')
           setIcon(expense.icon || '')
           setAmount(expense.totalAmount?.toString() || '')
@@ -323,6 +328,20 @@ export default function EditExpense() {
                 </button>
               ))}
             </div>
+          )}
+
+          {splitType === 'item-based' ? (
+            items.length > 0 && itemsTotal <= 0 && (
+              <p className="text-[12px] text-danger mt-2 text-left">
+                Amount must be greater than 0
+              </p>
+            )
+          ) : (
+            amount !== '' && parsedAmount <= 0 && (
+              <p className="text-[12px] text-danger mt-2 text-left">
+                Amount must be greater than 0
+              </p>
+            )
           )}
         </div>
 
