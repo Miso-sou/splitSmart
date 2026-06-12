@@ -6,12 +6,18 @@ const api = axios.create({
   withCredentials: true,
 })
 
-// Attach token to outgoing requests
+const AUTH_PATHS = ['/auth/login', '/auth/register', '/auth/guest', '/auth/refresh']
+
+// Attach token to outgoing requests & mark auth requests
 api.interceptors.request.use(
   (config) => {
     const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+    // Mark auth requests so the response interceptor can skip token refresh
+    if (config.url && AUTH_PATHS.some(path => config.url.endsWith(path))) {
+      config._isAuthRequest = true
     }
     return config
   },
@@ -26,14 +32,8 @@ api.interceptors.response.use(
   async (err) => {
     const original = err.config
     if (err.response?.status === 401 && !original._retry) {
-      // Don't refresh token on login, register, or guest-login paths
-      const isAuthRequest = original.url && (
-        original.url.includes('/api/auth/login') ||
-        original.url.includes('/api/auth/register') ||
-        original.url.includes('/api/auth/guest')
-      )
-
-      if (isAuthRequest) {
+      // Don't refresh token on login, register, guest-login, or refresh paths
+      if (original._isAuthRequest) {
         return Promise.reject(err)
       }
 
