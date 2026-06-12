@@ -1,6 +1,7 @@
 import { User } from "../models/user.model.js";
 import ApiError from "../utils/ApiError.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import { invalidateUserCache } from "../middleware/auth.middleware.js";
 
 // PUT /api/user/profile
 export const updateProfile = asyncHandler(async (req, res) => {
@@ -17,7 +18,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
             throw new ApiError(400, "Username must be between 3 and 20 characters");
         }
 
-        const usernameExists = await User.findOne({ username: trimmedUsername });
+        const usernameExists = await User.findOne({ username: trimmedUsername }).lean();
         if (usernameExists) {
             throw new ApiError(409, "Username already exists");
         }
@@ -30,6 +31,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     }
 
     await user.save();
+    invalidateUserCache(req.user._id.toString());
 
     res.status(200).json({
         _id: user._id,

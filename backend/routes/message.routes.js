@@ -9,7 +9,12 @@ router.get("/:id/messages", protect, async (req, res) => {
   try {
     const messages = await Message.find({ groupId: req.params.id })
       .populate("sender", "username avatar")
-      .sort({ createdAt: 1 }); // oldest first
+      .populate({
+        path: "replyTo",
+        populate: { path: "sender", select: "username" }
+      })
+      .sort({ createdAt: 1 }) // oldest first
+      .lean();
     res.json(messages);
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch messages" });
@@ -19,7 +24,7 @@ router.get("/:id/messages", protect, async (req, res) => {
 // POST /api/group/:id/messages
 router.post("/:id/messages", protect, async (req, res) => {
   try {
-    const { text, expenseId, imageUrl } = req.body;
+    const { text, expenseId, imageUrl, replyTo } = req.body;
     
     // We get sender from req.user
     const sender = req.user._id;
@@ -30,10 +35,17 @@ router.post("/:id/messages", protect, async (req, res) => {
       sender,
       text: text || "",
       expenseId: expenseId || null,
-      imageUrl: imageUrl || ""
+      imageUrl: imageUrl || "",
+      replyTo: replyTo || null
     });
 
-    const populatedMsg = await Message.findById(newMessage._id).populate("sender", "username avatar");
+    const populatedMsg = await Message.findById(newMessage._id)
+      .populate("sender", "username avatar")
+      .populate({
+        path: "replyTo",
+        populate: { path: "sender", select: "username" }
+      })
+      .lean();
 
     res.status(201).json(populatedMsg);
   } catch (err) {

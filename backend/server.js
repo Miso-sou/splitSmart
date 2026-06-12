@@ -28,6 +28,7 @@ const io = new Server(httpServer, {
   },
 });
 
+app.set("io", io);
 registerSocketHandlers(io);
 
 app.use(cors({

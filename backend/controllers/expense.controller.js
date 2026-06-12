@@ -1,6 +1,7 @@
 import mongoose from "mongoose"
 import Expense from "../models/expense.model.js"
 import Group from "../models/group.model.js"
+import Message from "../models/message.model.js"
 import asyncHandler from "../utils/asyncHandler.js"
 import ApiError from "../utils/ApiError.js"
 
@@ -11,7 +12,7 @@ const splitEqually = (totalAmount, participants) => {
         user: userId,
         amount: perPerson
     }));
-    
+
     // Adjust for division rounding difference
     const roundedSum = perPerson * participants.length;
     const diff = Math.round((totalAmount - roundedSum) * 100) / 100;
@@ -28,7 +29,7 @@ export const createExpense = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Group, description and paidBy are required")
     }
 
-    const groupDoc = await Group.findById(group)
+    const groupDoc = await Group.findById(group).lean()
     if (!groupDoc) {
         throw new ApiError(404, "Group not found")
     }
@@ -43,9 +44,21 @@ export const createExpense = asyncHandler(async (req, res) => {
 
     let totalAmount = 0
     if (items && items.length > 0) {
-        totalAmount = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0) // price * quantity per item, defaults to 1 if no quantity given
+        for (const item of items) {
+            if (item.price === undefined || item.price < 0) {
+                throw new ApiError(400, "Item price cannot be negative")
+            }
+            if (item.quantity !== undefined && item.quantity <= 0) {
+                throw new ApiError(400, "Item quantity must be greater than 0")
+            }
+        }
+        totalAmount = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0)
     } else {
-        throw new ApiError(400, "Atleast one item is required")
+        throw new ApiError(400, "At least one item is required")
+    }
+
+    if (totalAmount <= 0) {
+        throw new ApiError(400, "Total expense amount must be greater than 0")
     }
 
     // --- Building splits array according to type of split ---
@@ -54,12 +67,6 @@ export const createExpense = asyncHandler(async (req, res) => {
         case "equal":
             if (!splitAmong || splitAmong.length === 0) {
                 throw new ApiError(400, "splitAmong is required for equal splitting")
-            }
-
-            // Auto-include the creator in the split list if not already present
-            const creatorId = req.user._id.toString()
-            if (!splitAmong.includes(creatorId)) {
-                splitAmong.push(creatorId)
             }
 
             splits = splitEqually(totalAmount, splitAmong);
@@ -121,7 +128,16 @@ export const createExpense = asyncHandler(async (req, res) => {
 export const getGroupExpenses = asyncHandler(async (req, res) => {
     const { groupId } = req.params
 
-    const group = await Group.findById(groupId)
+    const [group, expenses] = await Promise.all([
+        Group.findById(groupId).lean(),
+        Expense.find({ group: groupId })
+            .populate("paidBy", "username avatar isGuest")
+            .populate("splits.user", "username avatar isGuest")
+            .populate("createdBy", "username avatar isGuest")
+            .sort({ createdAt: -1 })
+            .lean()
+    ]);
+
     if (!group) {
         throw new ApiError(404, "Group not found")
     }
@@ -130,12 +146,6 @@ export const getGroupExpenses = asyncHandler(async (req, res) => {
     if (!isMember) {
         throw new ApiError(403, "You are not a member of this group")
     }
-
-    const expenses = await Expense.find({ group: groupId })
-        .populate("paidBy", "username avatar isGuest")
-        .populate("splits.user", "username avatar isGuest")
-        .populate("createdBy", "username avatar isGuest")
-        .sort({ createdAt: -1 }) // newsest first
 
     if (expenses.length === 0) {
         return res.json({ message: "No expenses in this group yet", expenses: [] })
@@ -152,7 +162,7 @@ export const approveExpense = asyncHandler(async (req, res) => {
     }
 
     //Verify the user is an admin of the expense's group
-    const group = await Group.findById(expense.group)
+    const group = await Group.findById(expense.group).lean()
     if (!group) {
         throw new ApiError(404, "Group not found")
     }
@@ -170,6 +180,33 @@ export const approveExpense = asyncHandler(async (req, res) => {
     expense.approvalStatus = "approved"
     await expense.save()
 
+    // If it is an item-based split, create the chat message and broadcast it
+    if (expense.splits.length === 0 && expense.items && expense.items.length > 0) {
+        try {
+            const newMessage = await Message.create({
+                groupId: expense.group,
+                sender: expense.createdBy || req.user._id,
+                text: `📋 Bill split: ${expense.description} — ₹${expense.totalAmount.toFixed(2)}`,
+                expenseId: expense._id
+            });
+
+            const populated = await Message.findById(newMessage._id)
+                .populate("sender", "username avatar")
+                .populate({
+                    path: "replyTo",
+                    populate: { path: "sender", select: "username" }
+                })
+                .lean();
+
+            const io = req.app.get("io");
+            if (io) {
+                io.to(expense.group.toString()).emit("new-message", populated);
+            }
+        } catch (err) {
+            console.error("Failed to create/broadcast message for approved expense:", err);
+        }
+    }
+
     res.json({ message: "Expense Approved", expense })
 })
 
@@ -181,15 +218,20 @@ export const updateExpense = asyncHandler(async (req, res) => {
     }
 
     // Guests cannot edit expenses unless they created them
-    if (req.user.isGuest && expense.createdBy.toString() !== req.user._id.toString()) {
+    if (req.user.isGuest && (!expense.createdBy || expense.createdBy.toString() !== req.user._id.toString())) {
         throw new ApiError(403, "Guest users cannot edit expenses created by others. Please register to edit.")
     }
 
+    // Guest users cannot edit their expense until it gets approved
+    if (req.user.isGuest && expense.approvalStatus !== "approved") {
+        throw new ApiError(403, "Guest users cannot edit their expense until it gets approved by an admin.")
+    }
+
     // Only the creator or group admin can edit
-    const isCreator = expense.createdBy.toString() === req.user._id.toString()
-    const group = await Group.findById(expense.group)
+    const isCreator = expense.createdBy && expense.createdBy.toString() === req.user._id.toString()
+    const group = await Group.findById(expense.group).lean()
     const member = group?.members.find(
-        m => m.user.toString() === req.user._id.toString()
+        m => m.user && m.user.toString() === req.user._id.toString()
     )
     const isAdmin = member?.role === "admin"
 
@@ -209,8 +251,19 @@ export const updateExpense = asyncHandler(async (req, res) => {
 
     // If items are being updated, recalculate totalAmount
     if (items && items.length > 0) {
+        for (const item of items) {
+            if (item.price === undefined || item.price < 0) {
+                throw new ApiError(400, "Item price cannot be negative")
+            }
+            if (item.quantity !== undefined && item.quantity <= 0) {
+                throw new ApiError(400, "Item quantity must be greater than 0")
+            }
+        }
         expense.items = items
         expense.totalAmount = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0)
+        if (expense.totalAmount <= 0) {
+            throw new ApiError(400, "Total expense amount must be greater than 0")
+        }
     }
 
     // If splitType is provided, recalculate splits with updated totalAmount
@@ -221,12 +274,6 @@ export const updateExpense = asyncHandler(async (req, res) => {
             case "equal":
                 if (!splitAmong || splitAmong.length === 0) {
                     throw new ApiError(400, "splitAmong is required for equal splitting")
-                }
-
-                // Auto-include the creator
-                const creatorId = req.user._id.toString()
-                if (!splitAmong.includes(creatorId)) {
-                    splitAmong.push(creatorId)
                 }
 
                 splits = splitEqually(expense.totalAmount, splitAmong);
@@ -278,11 +325,11 @@ export const deleteExpense = asyncHandler(async (req, res) => {
     }
 
     // check if the user is creator
-    const isCreator = expense.createdBy.toString() === req.user._id.toString()
+    const isCreator = expense.createdBy && expense.createdBy.toString() === req.user._id.toString()
 
-    const group = await Group.findById(expense.group)
+    const group = await Group.findById(expense.group).lean()
     const member = group?.members.find(
-        m => m.user.toString() === req.user._id.toString()
+        m => m.user && m.user.toString() === req.user._id.toString()
     )
 
     const isAdmin = member?.role === "admin"
@@ -293,34 +340,35 @@ export const deleteExpense = asyncHandler(async (req, res) => {
 
     await expense.deleteOne()
 
-    res.json({ message: "Expense deleted succesffully" })
+    res.json({ message: "Expense deleted successfully" })
 })
 
 export const getgroupBalances = asyncHandler(async (req, res) => {
     const { groupId } = req.params
 
-    const group = await Group.findById(groupId).populate("members.user", "username avatar") // Populate is esssentially a join for nonSQL DBs. It helps queries referenced schema inside a specified schema, essentially skipping one manual query.
+    const [group, expenses] = await Promise.all([
+        Group.findById(groupId).populate("members.user", "username avatar").lean(),
+        Expense.find({
+            group: groupId,
+            approvalStatus: "approved"
+        }).lean()
+    ]);
 
     if (!group) {
         throw new ApiError(404, "Group not found")
     }
 
-    const isMember = group.members.some(m => m.user._id.toString() === req.user._id.toString())
+    const isMember = group.members.some(m => m.user && m.user._id && m.user._id.toString() === req.user._id.toString())
 
     if (!isMember) {
         throw new ApiError(403, "You are not a member of this group")
     }
 
-    // Only approved expenses are counted
-    const expenses = await Expense.find({
-        group: groupId,
-        approvalStatus: "approved"
-    })
-
     const balances = {}
 
     // Intialize all members with 0 balance
     group.members.forEach(m => {
+        if (!m.user || !m.user._id) return;
         balances[m.user._id.toString()] = {
             user: m.user,
             physicalPaid: 0,
@@ -336,7 +384,7 @@ export const getgroupBalances = asyncHandler(async (req, res) => {
             balances[payerId].physicalPaid += expense.totalAmount
         }
 
-        const payerSplit = expense.splits.find(s => s.user.toString() === payerId)
+        const payerSplit = expense.splits.find(s => s.user && s.user.toString() === payerId)
         const payerShare = payerSplit ? payerSplit.amount : 0
 
         if (balances[payerId]) {
@@ -345,6 +393,7 @@ export const getgroupBalances = asyncHandler(async (req, res) => {
 
         // Each person in splits gets debited their share
         expense.splits.forEach(split => {
+            if (!split.user) return;
             const userId = split.user.toString()
             if (balances[userId]) {
                 balances[userId].totalOwed += split.amount
@@ -379,13 +428,14 @@ export const getExpenseById = asyncHandler(async (req, res) => {
         .populate("paidBy", "username avatar isGuest")
         .populate("splits.user", "username avatar isGuest")
         .populate("items.claims.user", "username avatar isGuest")
-        .populate("createdBy", "username avatar isGuest");
+        .populate("createdBy", "username avatar isGuest")
+        .lean();
 
     if (!expense) {
         throw new ApiError(404, "Expense not found");
     }
 
-    const group = await Group.findById(expense.group);
+    const group = await Group.findById(expense.group).lean();
     if (!group) {
         throw new ApiError(404, "Group not found");
     }
@@ -401,7 +451,7 @@ export const getExpenseById = asyncHandler(async (req, res) => {
 // Synchronous helper to calculate splits from items array
 const calculateSplits = (items) => {
     const TAX_KEYWORDS = ['tax', 'gst', 'vat', 'service charge', 'cess'];
-    const isTaxItem = (name) => TAX_KEYWORDS.some(k => name.toLowerCase().includes(k));
+    const isTaxItem = (name) => name && TAX_KEYWORDS.some(k => name.toLowerCase().includes(k));
 
     let totalTaxAmount = 0;
     let totalClaimedNonTax = 0;
@@ -414,16 +464,17 @@ const calculateSplits = (items) => {
         } else {
             const qty = i.quantity || 1;
             const claimersCount = i.claims.length;
-            
+
             if (claimersCount > 0) {
                 if (qty === 1) {
                     // Hybrid Case 1: Quantity is 1 -> Split equally among all claimers
                     const totalItemCost = i.price;
                     totalClaimedNonTax += totalItemCost;
                     const costPerClaimer = totalItemCost / claimersCount;
-                    
+
                     i.claims.forEach(c => {
-                        const uid = c.user.toString();
+                        if (!c.user) return;
+                        const uid = (c.user._id || c.user).toString();
                         if (!userSplitTotals[uid]) userSplitTotals[uid] = 0;
                         userSplitTotals[uid] += costPerClaimer;
                         participants.add(uid);
@@ -431,7 +482,8 @@ const calculateSplits = (items) => {
                 } else {
                     // Hybrid Case 2: Quantity > 1 -> Portion-based pricing (price * claimed quantity)
                     i.claims.forEach(c => {
-                        const uid = c.user.toString();
+                        if (!c.user) return;
+                        const uid = (c.user._id || c.user).toString();
                         if (!userSplitTotals[uid]) userSplitTotals[uid] = 0;
                         userSplitTotals[uid] += (i.price * c.quantity);
                         totalClaimedNonTax += (i.price * c.quantity);
@@ -454,7 +506,7 @@ const calculateSplits = (items) => {
     const totalClaimedAndTax = totalClaimedNonTax + totalTaxAmount;
     const currentSplitsSum = splits.reduce((sum, s) => sum + s.amount, 0);
     const diff = Math.round((totalClaimedAndTax - currentSplitsSum) * 100) / 100;
-    
+
     if (diff !== 0 && splits.length > 0) {
         splits[0].amount = Math.round((splits[0].amount + diff) * 100) / 100;
     }
@@ -478,7 +530,7 @@ export const claimItem = asyncHandler(async (req, res) => {
             throw new ApiError(404, "Expense not found");
         }
 
-        const group = await Group.findById(expense.group);
+        const group = await Group.findById(expense.group).lean();
         const isMember = group.members.some(m => m.user.toString() === req.user._id.toString());
         if (!isMember) {
             throw new ApiError(403, "You are not a member of this group");
@@ -489,8 +541,8 @@ export const claimItem = asyncHandler(async (req, res) => {
             throw new ApiError(404, "Item not found");
         }
 
-        const myClaimIndex = item.claims.findIndex(c => c.user.toString() === req.user._id.toString());
-        
+        const myClaimIndex = item.claims.findIndex(c => c.user && c.user.toString() === req.user._id.toString());
+
         if (item.quantity === 1) {
             // Case 1: Quantity is 1 -> Toggle claiming, ignore requested quantity body, default to 1
             if (myClaimIndex === -1) {
@@ -502,7 +554,7 @@ export const claimItem = asyncHandler(async (req, res) => {
         } else {
             // Case 2: Quantity > 1 -> Portion-based claiming, validate remaining quantity
             const otherClaimsQty = item.claims
-                .filter(c => c.user.toString() !== req.user._id.toString())
+                .filter(c => c.user && c.user.toString() !== req.user._id.toString())
                 .reduce((sum, c) => sum + c.quantity, 0);
 
             const remainingQty = item.quantity - otherClaimsQty;
@@ -541,7 +593,8 @@ export const claimItem = asyncHandler(async (req, res) => {
                 .populate("paidBy", "username avatar isGuest")
                 .populate("splits.user", "username avatar isGuest")
                 .populate("items.claims.user", "username avatar isGuest")
-                .populate("createdBy", "username avatar isGuest");
+                .populate("createdBy", "username avatar isGuest")
+                .lean();
             return res.json(finalExpense);
         }
 
@@ -564,7 +617,7 @@ export const unclaimItem = asyncHandler(async (req, res) => {
             throw new ApiError(404, "Expense not found");
         }
 
-        const group = await Group.findById(expense.group);
+        const group = await Group.findById(expense.group).lean();
         const isMember = group.members.some(m => m.user.toString() === req.user._id.toString());
         if (!isMember) {
             throw new ApiError(403, "You are not a member of this group");
@@ -575,7 +628,7 @@ export const unclaimItem = asyncHandler(async (req, res) => {
             throw new ApiError(404, "Item not found");
         }
 
-        item.claims = item.claims.filter(c => c.user.toString() !== req.user._id.toString());
+        item.claims = item.claims.filter(c => c.user && c.user.toString() !== req.user._id.toString());
 
         const newSplits = calculateSplits(expense.items);
         const currentVersion = expense.__v || 0;
@@ -597,7 +650,8 @@ export const unclaimItem = asyncHandler(async (req, res) => {
                 .populate("paidBy", "username avatar isGuest")
                 .populate("splits.user", "username avatar isGuest")
                 .populate("items.claims.user", "username avatar isGuest")
-                .populate("createdBy", "username avatar isGuest");
+                .populate("createdBy", "username avatar isGuest")
+                .lean();
             return res.json(finalExpense);
         }
 

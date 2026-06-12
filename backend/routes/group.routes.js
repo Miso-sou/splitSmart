@@ -1,6 +1,6 @@
 import express from 'express'
 import { protect, requireAdmin, requireRegistered } from '../middleware/auth.middleware.js'
-import { createGroup, getGroupById, getGroups, joinGroup, updateGroup, genrateInvite, deleteGroup, removeMember, getSettlement, leaveGroup, promoteMember } from '../controllers/group.controller.js'
+import { createGroup, getGroupById, getGroups, joinGroup, updateGroup, genrateInvite, deleteGroup, removeMember, getSettlement, leaveGroup, promoteMember, demoteMember } from '../controllers/group.controller.js'
 
 const router = express.Router()
 
@@ -21,5 +21,6 @@ router.delete("/:id", requireAdmin, deleteGroup)
 router.post("/:id/invite", requireAdmin, genrateInvite)
 router.delete("/:id/members/:userId", requireAdmin, removeMember)
 router.put("/:id/members/:userId/promote", requireAdmin, promoteMember)
+router.put("/:id/members/:userId/demote", requireAdmin, demoteMember)
 
 export default router;

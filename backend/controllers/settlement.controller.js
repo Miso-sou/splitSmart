@@ -14,7 +14,7 @@ export const createSettlement = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Amount must be greater than 0");
   }
 
-  const group = await Group.findById(groupId);
+  const group = await Group.findById(groupId).lean();
   if (!group) {
     throw new ApiError(404, "Group not found");
   }
@@ -39,7 +39,8 @@ export const createSettlement = asyncHandler(async (req, res) => {
 
   const populatedSettlement = await Settlement.findById(newSettlement._id)
     .populate("from", "username avatar")
-    .populate("to", "username avatar");
+    .populate("to", "username avatar")
+    .lean();
 
   res.status(201).json(populatedSettlement);
 });
@@ -51,7 +52,15 @@ export const getSettlementsByGroup = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Group ID is required");
   }
 
-  const group = await Group.findById(groupId);
+  const [group, settlements] = await Promise.all([
+    Group.findById(groupId).lean(),
+    Settlement.find({ group: groupId })
+      .populate("from", "username avatar")
+      .populate("to", "username avatar")
+      .sort({ settledAt: -1 })
+      .lean()
+  ]);
+
   if (!group) {
     throw new ApiError(404, "Group not found");
   }
@@ -63,11 +72,6 @@ export const getSettlementsByGroup = asyncHandler(async (req, res) => {
   if (!isMember) {
     throw new ApiError(403, "You are not a member of this group");
   }
-
-  const settlements = await Settlement.find({ group: groupId })
-    .populate("from", "username avatar")
-    .populate("to", "username avatar")
-    .sort({ settledAt: -1 });
 
   res.json(settlements);
 });

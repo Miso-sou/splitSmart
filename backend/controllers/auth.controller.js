@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken"
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import crypto from "crypto"
+import { invalidateUserCache } from "../middleware/auth.middleware.js";
 
 const generateAccessToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" })
@@ -19,9 +20,12 @@ export const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(400, "All fields are required!")
     }
 
+    const normalizedEmail = email.trim().toLowerCase()
+    const trimmedUsername = username.trim()
+
     const [emailExists, usernameExists] = await Promise.all([
-        User.findOne({ email }),
-        User.findOne({ username })
+        User.findOne({ email: normalizedEmail }).lean(),
+        User.findOne({ username: trimmedUsername }).lean()
     ])
 
     if (emailExists) {
@@ -33,8 +37,8 @@ export const registerUser = asyncHandler(async (req, res) => {
     }
 
     const user = await User.create({
-        username,
-        email,
+        username: trimmedUsername,
+        email: normalizedEmail,
         password
     });
 
@@ -63,7 +67,8 @@ export const loginUser = asyncHandler(async (req, res) => {
         throw new ApiError(400, "All fields are required")
     }
 
-    const user = await User.findOne({ email })
+    const normalizedEmail = email.trim().toLowerCase()
+    const user = await User.findOne({ email: normalizedEmail })
 
     if (!user) {
         throw new ApiError(401, "Invalid credentials")
@@ -96,7 +101,7 @@ export const loginUser = asyncHandler(async (req, res) => {
 export const logoutUser = asyncHandler(async (req, res) => {
     res.clearCookie("refreshToken", {
         httpOnly: true,
-        secure: true,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         expires: new Date(0)
     })
@@ -118,7 +123,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET)
 
-        const user = await User.findById(decoded.id)
+        const user = await User.findById(decoded.id).lean()
 
         if (!user) {
             throw new ApiError(401, "User doesn't exist")
@@ -144,34 +149,15 @@ export const guestLogin = asyncHandler(async (req, res) => {
     const { displayName, guestId } = req.body
 
     if (!displayName || displayName.trim().length < 2) {
-        throw new ApiError(400, "Display name is required (at least 2 characters long")
+        throw new ApiError(400, "Display name is required (at least 2 characters long)")
     }
 
     let user;
+    let statusCode = 200;
 
     if (guestId && guestId.match(/^[0-9a-fA-F]{24}$/)) {
         user = await User.findById(guestId)
     }
-
-        if (user && user.isGuest) {
-        const accessToken = generateAccessToken(user._id)
-        const refreshToken = generateRefreshToken(user._id)
-
-        res.cookie("refreshToken", refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        })
-
-        return res.status(200).json({
-            _id: user._id,
-            username: user.username,
-            isGuest: true,
-            accessToken
-        })
-    }
-
 
     if (!user || !user.isGuest) {
         // generate unique username for guest like John_a3fd4gh to avoid collsions with real usernames
@@ -183,6 +169,7 @@ export const guestLogin = asyncHandler(async (req, res) => {
             username,
             isGuest: true,
         })
+        statusCode = 201;
     } else if (displayName) {
         // Update existing guest's name so they don't remain "guest" forever
         const uniqueSuffix = crypto.randomBytes(4).toString("hex")
@@ -201,9 +188,9 @@ export const guestLogin = asyncHandler(async (req, res) => {
         maxAge: 7 * 24 * 60 * 60 * 1000,
     })
 
-    res.status(201).json({
+    res.status(statusCode).json({
         _id: user._id,
-        username: displayName.trim(),
+        username: user.username,
         isGuest: true,
         accessToken
     })
@@ -220,9 +207,15 @@ export const upgradeGuest = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Email and password are required to register")
     }
 
-    const emailExists = await User.findOne({ email })
+    const normalizedEmail = email.trim().toLowerCase()
+    const emailExists = await User.findOne({ email: normalizedEmail }).lean()
     if (emailExists) {
         throw new ApiError(409, "Email already in use")
+    }
+
+    const user = await User.findById(req.user._id)
+    if (!user) {
+        throw new ApiError(404, "User not found")
     }
 
     if (username) {
@@ -230,21 +223,22 @@ export const upgradeGuest = asyncHandler(async (req, res) => {
         if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
             throw new ApiError(400, "Username must be between 3 and 20 characters")
         }
-        const usernameExists = await User.findOne({ username: trimmedUsername })
-        if (usernameExists && usernameExists._id.toString() !== req.user._id.toString()) {
+        const usernameExists = await User.findOne({ username: trimmedUsername }).lean()
+        if (usernameExists && usernameExists._id.toString() !== user._id.toString()) {
             throw new ApiError(409, "Username already in use")
         }
-        req.user.username = trimmedUsername
+        user.username = trimmedUsername
     }
 
-    req.user.email = email
-    req.user.password = password
-    req.user.isGuest = false
+    user.email = normalizedEmail
+    user.password = password
+    user.isGuest = false
 
-    await req.user.save()
+    await user.save()
+    invalidateUserCache(req.user._id.toString())
 
-    const accessToken = generateAccessToken(req.user._id)
-    const refreshToken = generateRefreshToken(req.user._id)
+    const accessToken = generateAccessToken(user._id)
+    const refreshToken = generateRefreshToken(user._id)
 
     res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
@@ -255,10 +249,11 @@ export const upgradeGuest = asyncHandler(async (req, res) => {
 
     res.json({
         message: "Account registered successfully",
-        _id: req.user._id,
-        username: req.user.username,
-        email: req.user.email,
+        _id: user._id,
+        username: user.username,
+        email: user.email,
         isGuest: false,
         accessToken
     })
 })
+

@@ -23,6 +23,14 @@ export const parseBill = asyncHandler(async (req, res) => {
     IMPORTANT: The price listed on the right side of the bill is often the TOTAL row price for that quantity. For the "price" field in your JSON, you MUST calculate and return the UNIT PRICE (i.e., the total row price divided by the quantity). 
     For example, if the bill says "4 x Veg Biryani 360.00", the quantity is 4 and the unit price is 90.00.
 
+    CROSS-CHECK AND MATHEMATICAL VALIDATION:
+    Before outputting the final JSON, you must perform this mathematical self-check:
+    1. For every regular item, verify that (price * quantity) equals the expected total for that item.
+    2. Sum up the calculated totals of all regular items (excluding the "Total Tax" item).
+    3. The difference between this sum and the final overall "total" amount must be designated as the "Total Tax" item's price.
+    4. Therefore, set the "Total Tax" item's price to (total - sum of all other items), ensuring that when all items in the "items" array (including "Total Tax" with quantity 1) are summed up, the sum is EXACTLY equal to the "total" field.
+    5. Do NOT create any adjustment, discount, or rounding items. All discrepancies, taxes, service charges, and rounding differences must be rolled into the single "Total Tax" item.
+
     Return ONLY valid JSON with no extra text, markdown, or explanation.
 
     Format:

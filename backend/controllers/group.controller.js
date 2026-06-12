@@ -39,17 +39,16 @@ export const createGroup = asyncHandler(async (req, res) => {
 export const getGroups = asyncHandler(async (req, res) => {
   const groups = await Group.find({
     "members.user": req.user._id,
-  }).populate("members.user", "username email avatar");
+  }).populate("members.user", "username email avatar").lean();
 
   res.status(200).json(groups);
 });
 
 // Find a group by id (with also auth check so that if they are not part of that group they can't see that group)
 export const getGroupById = asyncHandler(async (req, res) => {
-  const group = await Group.findById(req.params.id).populate(
-    "members.user",
-    "username email avatar isGuest",
-  );
+  const group = await Group.findById(req.params.id)
+    .populate("members.user", "username email avatar isGuest")
+    .lean();
 
   if (!group) {
     throw new ApiError(404, "Group not found");
@@ -144,6 +143,47 @@ export const removeMember = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User is not a member of this group");
   }
 
+  // Calculate the user's balance in the group.
+  const [expensesRaw, settlements] = await Promise.all([
+    Expense.find({
+      group: req.group._id,
+      approvalStatus: "approved",
+    }).lean(),
+    Settlement.find({ group: req.group._id }).lean(),
+  ]);
+
+  let expenses = expensesRaw.filter((e) => {
+    const splitsSum = e.splits.reduce((sum, split) => sum + split.amount, 0);
+    return Math.abs(splitsSum - e.totalAmount) < 1.0;
+  });
+
+  const balance = {};
+
+  expenses.forEach((e) => {
+    const uid = e.paidBy.toString();
+    balance[uid] = (balance[uid] || 0) + e.totalAmount;
+    e.splits.forEach((split) => {
+      const splitUid = split.user.toString();
+      balance[splitUid] = (balance[splitUid] || 0) - split.amount;
+    });
+  });
+
+  settlements.forEach((s) => {
+    const fromId = s.from.toString();
+    const toId = s.to.toString();
+    balance[fromId] = (balance[fromId] || 0) + s.amount;
+    balance[toId] = (balance[toId] || 0) - s.amount;
+  });
+
+  const net = Math.round((balance[userId] || 0) * 100) / 100;
+
+  if (Math.abs(net) > 0.02) {
+    throw new ApiError(
+      400,
+      `You cannot remove this member because they have an unsettled balance of ${net > 0 ? "+" : ""}${net.toFixed(2)}. Please settle all balances before removing them.`
+    );
+  }
+
   req.group.members.splice(memberIndex, 1);
   await req.group.save();
 
@@ -152,10 +192,12 @@ export const removeMember = asyncHandler(async (req, res) => {
 
 export const getSettlement = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const group = await Group.findById(id).populate(
-    "members.user",
-    "username avatar",
-  );
+
+  console.time("groupFindAndPopulate");
+  const group = await Group.findById(id)
+    .populate("members.user", "username avatar")
+    .lean();
+  console.timeEnd("groupFindAndPopulate");
 
   if (!group) {
     throw new ApiError(404, "Group not found");
@@ -168,27 +210,44 @@ export const getSettlement = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You are not a member of this group");
   }
 
-  let expenses = await Expense.find({
+  console.time("expensesQuery");
+  const expensesPromise = Expense.find({
     group: id,
     approvalStatus: "approved",
+  }).lean().then(res => {
+    console.timeEnd("expensesQuery");
+    return res;
   });
 
-  expenses = expenses.filter(e => {
+  console.time("settlementsQuery");
+  const settlementsPromise = Settlement.find({ group: id }).lean().then(res => {
+    console.timeEnd("settlementsQuery");
+    return res;
+  });
+
+  console.time("expensesAndSettlementsFind");
+  const [expensesRaw, settlements] = await Promise.all([
+    expensesPromise,
+    settlementsPromise,
+  ]);
+  console.timeEnd("expensesAndSettlementsFind");
+
+  let expenses = expensesRaw.filter(e => {
     // Sum all split amounts
     const splitsSum = e.splits.reduce((sum, split) => sum + split.amount, 0);
-    
+
     // In equal or custom splits, splitsSum will equal totalAmount upon creation.
     // In item-based splits, splitsSum starts at 0 and only reaches totalAmount when all items are claimed.
     // We use a small epsilon (1.0) to account for rounding errors in tax divisions.
     if (Math.abs(splitsSum - e.totalAmount) < 1.0) {
       return true;
     }
-    
+
     // If splits do not sum to totalAmount, the bill is not fully claimed.
     return false;
   });
-  
-  const settlements = await Settlement.find({ group: id });
+
+  console.time("processing");
 
   // Compute total expenses manually to build memberStats
   const balance = {};
@@ -196,13 +255,13 @@ export const getSettlement = asyncHandler(async (req, res) => {
 
   expenses.forEach(e => {
     const uid = e.paidBy.toString();
-    
+
     // Find the payer's own split share to represent their actual out-of-pocket spending
     const payerSplit = e.splits.find(s => s.user.toString() === uid);
     const payerShare = payerSplit ? payerSplit.amount : 0;
-    
+
     expenseTotals[uid] = (expenseTotals[uid] || 0) + payerShare;
-    
+
     balance[uid] = (balance[uid] || 0) + e.totalAmount;
     e.splits.forEach(split => {
       const splitUid = split.user.toString();
@@ -216,7 +275,7 @@ export const getSettlement = asyncHandler(async (req, res) => {
     const toId = s.to.toString();
     balance[fromId] = (balance[fromId] || 0) + s.amount;
     balance[toId] = (balance[toId] || 0) - s.amount;
-    
+
     // Add settlement paid to the sender's totalPaid
     expenseTotals[fromId] = (expenseTotals[fromId] || 0) + s.amount;
   });
@@ -259,12 +318,22 @@ export const getSettlement = asyncHandler(async (req, res) => {
     transactions: enrichedTransactions,
     memberStats
   });
+
+  console.timeEnd("processing");
 });
 
 // Leave a group
 export const leaveGroup = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const group = await Group.findById(id);
+
+  const [group, expensesRaw, settlements] = await Promise.all([
+    Group.findById(id),
+    Expense.find({
+      group: id,
+      approvalStatus: "approved",
+    }).lean(),
+    Settlement.find({ group: id }).lean(),
+  ]);
 
   if (!group) {
     throw new ApiError(404, "Group not found");
@@ -279,17 +348,10 @@ export const leaveGroup = asyncHandler(async (req, res) => {
   }
 
   // 1. Calculate the user's balance in the group.
-  let expenses = await Expense.find({
-    group: id,
-    approvalStatus: "approved",
-  });
-
-  expenses = expenses.filter((e) => {
+  let expenses = expensesRaw.filter((e) => {
     const splitsSum = e.splits.reduce((sum, split) => sum + split.amount, 0);
     return Math.abs(splitsSum - e.totalAmount) < 1.0;
   });
-
-  const settlements = await Settlement.find({ group: id });
 
   const balance = {};
 
@@ -315,8 +377,7 @@ export const leaveGroup = asyncHandler(async (req, res) => {
   if (Math.abs(net) > 0.02) {
     throw new ApiError(
       400,
-      `You cannot leave this group because you have an unsettled balance of ${
-        net > 0 ? "+" : ""
+      `You cannot leave this group because you have an unsettled balance of ${net > 0 ? "+" : ""
       }${net.toFixed(2)}. Please settle all balances before leaving.`
     );
   }
@@ -374,7 +435,7 @@ export const promoteMember = asyncHandler(async (req, res) => {
     throw new ApiError(400, "User is already an admin");
   }
 
-  const userToPromote = await User.findById(userId);
+  const userToPromote = await User.findById(userId).lean();
   if (!userToPromote) {
     throw new ApiError(404, "User not found");
   }
@@ -388,6 +449,41 @@ export const promoteMember = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     message: "Member promoted to admin successfully",
+    group: req.group
+  });
+});
+
+export const demoteMember = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const member = req.group.members.find(
+    (m) => m.user.toString() === userId,
+  );
+
+  if (!member) {
+    throw new ApiError(404, "User is not a member of this group");
+  }
+
+  if (member.role !== "admin") {
+    throw new ApiError(400, "User is not an admin");
+  }
+
+  // Prevent demotion if they are the only admin
+  const otherAdmins = req.group.members.filter(
+    (m) => m.role === "admin" && m.user.toString() !== userId
+  );
+  if (otherAdmins.length === 0) {
+    throw new ApiError(
+      400,
+      "You cannot demote the only admin of this group. Please promote another member to admin first."
+    );
+  }
+
+  member.role = "member";
+  await req.group.save();
+
+  res.status(200).json({
+    message: "Member demoted to member successfully",
     group: req.group
   });
 });

@@ -15,10 +15,17 @@ export function registerSocketHandlers(io) {
           groupId,
           sender: message.senderId,
           text: message.text,
+          replyTo: message.replyTo || null,
         });
 
         const saved = await newMessage.save();
-        const populated = await saved.populate("sender", "username avatar");
+        const populated = await Message.findById(saved._id)
+          .populate("sender", "username avatar")
+          .populate({
+            path: "replyTo",
+            populate: { path: "sender", select: "username" }
+          })
+          .lean();
 
         io.to(groupId).emit("new-message", populated);
       } catch (err) {

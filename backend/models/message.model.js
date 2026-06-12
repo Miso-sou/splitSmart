@@ -23,6 +23,11 @@ const messageSchema = new Schema({
     ref: "Expense",
     default: null
   },
+  replyTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Message",
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now,
