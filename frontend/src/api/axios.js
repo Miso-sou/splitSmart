@@ -26,6 +26,17 @@ api.interceptors.response.use(
   async (err) => {
     const original = err.config
     if (err.response?.status === 401 && !original._retry) {
+      // Don't refresh token on login, register, or guest-login paths
+      const isAuthRequest = original.url && (
+        original.url.includes('/api/auth/login') ||
+        original.url.includes('/api/auth/register') ||
+        original.url.includes('/api/auth/guest')
+      )
+
+      if (isAuthRequest) {
+        return Promise.reject(err)
+      }
+
       original._retry = true
 
       // If a refresh is not already in progress, start one
