@@ -56,6 +56,10 @@ app.get("/healthz", (req, res) => {
   res.status(200).send("OK");
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Central error handler — must be after all routes
 app.use(errorHandler);
 
