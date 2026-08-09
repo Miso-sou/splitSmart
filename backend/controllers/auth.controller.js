@@ -13,6 +13,22 @@ const generateRefreshToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "30d" })
 }
 
+const isProduction = process.env.NODE_ENV === "production";
+
+const getCookieOptions = () => ({
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000
+})
+
+const getLogoutCookieOptions = () => ({
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    expires: new Date(0)
+})
+
 export const registerUser = asyncHandler(async (req, res) => {
     const { username, email, password } = req.body
 
@@ -45,12 +61,7 @@ export const registerUser = asyncHandler(async (req, res) => {
     const accessToken = generateAccessToken(user._id)
     const refreshToken = generateRefreshToken(user._id)
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    res.cookie("refreshToken", refreshToken, getCookieOptions())
 
     res.status(201).json({
         _id: user._id,
@@ -83,12 +94,7 @@ export const loginUser = asyncHandler(async (req, res) => {
     const accessToken = generateAccessToken(user._id)
     const refreshToken = generateRefreshToken(user._id)
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    res.cookie("refreshToken", refreshToken, getCookieOptions())
 
     res.json({
         _id: user._id,
@@ -99,12 +105,7 @@ export const loginUser = asyncHandler(async (req, res) => {
 })
 
 export const logoutUser = asyncHandler(async (req, res) => {
-    res.clearCookie("refreshToken", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        expires: new Date(0)
-    })
+    res.clearCookie("refreshToken", getLogoutCookieOptions())
 
     res.status(200).json({ message: "Logout Successful" })
 })
@@ -132,12 +133,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
         const newAccessToken = generateAccessToken(user._id)
         const newRefreshToken = generateRefreshToken(user._id)
 
-        res.cookie("refreshToken", newRefreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        })
+        res.cookie("refreshToken", newRefreshToken, getCookieOptions())
 
         res.json({ accessToken: newAccessToken })
     } catch (error) {
@@ -181,12 +177,7 @@ export const guestLogin = asyncHandler(async (req, res) => {
     const accessToken = generateAccessToken(user._id)
     const refreshToken = generateRefreshToken(user._id)
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-    })
+    res.cookie("refreshToken", refreshToken, getCookieOptions())
 
     res.status(statusCode).json({
         _id: user._id,
@@ -240,12 +231,7 @@ export const upgradeGuest = asyncHandler(async (req, res) => {
     const accessToken = generateAccessToken(user._id)
     const refreshToken = generateRefreshToken(user._id)
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    res.cookie("refreshToken", refreshToken, getCookieOptions())
 
     res.json({
         message: "Account registered successfully",

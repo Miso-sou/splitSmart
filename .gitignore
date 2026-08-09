@@ -44,3 +44,5 @@ benchmark-indexing.js
 benchmarking-indexing.js
 stats-by-indexing
 stats-by-indexing.md
+
+db-indexing-for-splitsmart.md

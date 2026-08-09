@@ -41,8 +41,9 @@ api.interceptors.response.use(
 
       // If a refresh is not already in progress, start one
       if (!refreshPromise) {
+        const rawBaseURL = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '').replace(/\/$/, '');
         refreshPromise = axios.post(
-          `${import.meta.env.VITE_API_URL || ''}/api/auth/refresh`,
+          `${rawBaseURL}/api/auth/refresh`,
           {},
           { withCredentials: true }
         ).then(res => {
