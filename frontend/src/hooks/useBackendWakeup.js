@@ -10,7 +10,7 @@ export function useBackendWakeup() {
 
     const ping = async () => {
       try {
-        const signal = AbortSignal.timeout(10000);
+        const signal = AbortSignal.timeout(5000);
         const res = await fetch(`${import.meta.env.VITE_API_URL}/health`, { signal });
         
         if (res.status === 200) {
@@ -28,7 +28,7 @@ export function useBackendWakeup() {
         if (nextAttempt > 10) {
           setStatus('error');
         } else {
-          timeoutId = setTimeout(ping, 3000);
+          timeoutId = setTimeout(ping, 2500);
         }
         return nextAttempt;
       });
@@ -44,3 +44,4 @@ export function useBackendWakeup() {
 
   return { status, attempt };
 }
+

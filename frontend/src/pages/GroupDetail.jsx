@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, MoreVertical, UserPlus, Settings, Trash2, LogOut } from 'lucide-react'
 import { groupService } from '../services/group.service'
 import { expenseService } from '../services/expense.service'
 import { useAuth } from '../hooks/useAuth'
+import { useDataCache } from '../hooks/useDataCache'
 import toast from 'react-hot-toast'
-import LoadingSpinner from '../components/shared/LoadingSpinner'
 import ExpensesTab from '../components/group/ExpensesTab'
 import BalancesTab from '../components/group/BalancesTab'
 import ChatTab from '../components/group/ChatTab'
@@ -20,31 +20,73 @@ const TABS = [
   { id: 'chat', label: 'Chat' },
 ]
 
+function GroupDetailSkeleton() {
+  return (
+    <div className="bg-[#0f1010] min-h-[100dvh] flex flex-col">
+      <header className="sticky top-0 z-30 bg-[#0f1010] px-4 pt-4 pb-2 shrink-0 animate-pulse">
+        <div className="flex items-center justify-between max-w-3xl mx-auto">
+          <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
+            <div className="w-9 h-9 rounded-xl bg-[#252525]" />
+            <div className="h-6 w-36 bg-[#252525] rounded-lg" />
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-[#252525]" />
+        </div>
+        <div className="flex gap-1 mt-3 max-w-3xl mx-auto bg-[#1a1a1a] rounded-xl p-1">
+          <div className="flex-1 h-8 bg-[#252525] rounded-lg" />
+          <div className="flex-1 h-8 bg-[#252525]/50 rounded-lg" />
+          <div className="flex-1 h-8 bg-[#252525]/50 rounded-lg" />
+        </div>
+      </header>
+      <main className="max-w-3xl mx-auto w-full px-4 pb-24 mt-4 flex flex-col gap-3 animate-pulse">
+        <div className="h-20 bg-[#252525] rounded-2xl w-full" />
+        <div className="h-20 bg-[#252525] rounded-2xl w-full" />
+        <div className="h-20 bg-[#252525] rounded-2xl w-full" />
+      </main>
+    </div>
+  )
+}
+
 export default function GroupDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [group, setGroup] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
 
-  // States for parallel data fetching
-  const [expenses, setExpenses] = useState([])
-  const [expensesLoading, setExpensesLoading] = useState(true)
-  const [expensesError, setExpensesError] = useState(null)
+  // Cached data fetching
+  const { 
+    data: group, 
+    loading: groupLoading, 
+    error: groupError, 
+    setData: setGroup, 
+    invalidateCache: invalidateGroupCache 
+  } = useDataCache(`group_detail_${id}`, () => groupService.getGroupById(id), [id])
 
-  const [balancesData, setBalancesData] = useState(null)
-  const [balancesLoading, setBalancesLoading] = useState(true)
-  const [balancesError, setBalancesError] = useState(false)
+  const { 
+    data: rawExpenses, 
+    loading: expensesLoading, 
+    error: expensesError 
+  } = useDataCache(`group_expenses_${id}`, () => expenseService.getGroupExpenses(id), [id])
+
+  const { 
+    data: balancesData, 
+    loading: balancesLoading, 
+    error: balancesError,
+    invalidateCache: invalidateBalancesCache
+  } = useDataCache(`group_settlements_${id}`, () => groupService.getSettlement(id), [id])
+
+  const expenses = Array.isArray(rawExpenses) ? rawExpenses : (rawExpenses?.expenses || [])
 
   const [activeTab, setActiveTab] = useState('expenses')
-
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
   const isAdmin = group?.members?.find(m => m.user._id === user?._id)?.role === 'admin'
+
+  const refetchAll = () => {
+    invalidateGroupCache();
+    invalidateBalancesCache();
+  };
 
   const handleLeaveGroup = async () => {
     const confirmLeave = window.confirm("Are you sure you want to leave this group?")
@@ -59,69 +101,14 @@ export default function GroupDetail() {
     }
   }
 
-  const fetchData = async () => {
-    setLoading(true)
-    setExpensesLoading(true)
-    setBalancesLoading(true)
-    setError(null)
-    setExpensesError(null)
-    setBalancesError(false)
-
-    const groupPromise = groupService.getGroupById(id)
-      .then((res) => {
-        setGroup(res.data)
-      })
-      .catch((err) => {
-        setError(err.response?.data?.message || 'Failed to load group')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-
-    const expensesPromise = expenseService.getGroupExpenses(id)
-      .then((res) => {
-        const data = Array.isArray(res.data) ? res.data : (res.data.expenses || [])
-        setExpenses(data)
-      })
-      .catch((err) => {
-        setExpensesError(err.response?.data?.message || 'Failed to load expenses')
-      })
-      .finally(() => {
-        setExpensesLoading(false)
-      })
-
-    const balancesPromise = groupService.getSettlement(id)
-      .then((res) => {
-        setBalancesData(res.data)
-      })
-      .catch(() => {
-        setBalancesError(true)
-      })
-      .finally(() => {
-        setBalancesLoading(false)
-      })
-
-    await Promise.all([groupPromise, expensesPromise, balancesPromise])
+  if (groupLoading && !group) {
+    return <GroupDetailSkeleton />
   }
 
-  useEffect(() => {
-    if (id) {
-      fetchData()
-    }
-  }, [id])
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0f1010] flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
-  }
-
-  if (error) {
+  if (groupError && !group) {
     return (
       <div className="min-h-screen bg-[#0f1010] flex flex-col items-center justify-center px-6">
-        <p className="text-sm text-danger mb-2">{error}</p>
+        <p className="text-sm text-danger mb-2">{groupError}</p>
         <button
           onClick={() => navigate('/dashboard')}
           className="text-sm text-[#6b7280] hover:text-white transition-colors"
@@ -131,6 +118,7 @@ export default function GroupDetail() {
       </div>
     )
   }
+
 
   return (
     <div className={cn(
@@ -265,7 +253,8 @@ export default function GroupDetail() {
             data={balancesData} 
             loading={balancesLoading} 
             error={balancesError} 
-            refetch={fetchData} 
+            refetch={refetchAll} 
+
           />
         )}
         {activeTab === 'chat' && (

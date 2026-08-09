@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { expenseService } from '../../services/expense.service'
+import { prefetchData } from '../../hooks/useDataCache'
 import LoadingSpinner from '../shared/LoadingSpinner'
 import { cn } from '../../lib/cn'
 import { Receipt } from 'lucide-react'
 
 import { formatUsername, getInitials } from '../../utils/format'
+
 
 function formatDate(dateStr) {
   const d = new Date(dateStr)
@@ -27,19 +29,28 @@ function groupByDate(expenses) {
 }
 
 function ExpenseRow({ expense, groupId }) {
+
   const navigate = useNavigate()
   const payer = expense.paidBy
+
+  const handlePrefetch = () => {
+    import('../../pages/ExpenseDetail').catch(() => {})
+    prefetchData(`expense_detail_${expense._id}`, () => expenseService.getExpenseById(expense._id))
+  }
 
   return (
     <button
       id={`expense-${expense._id}`}
       onClick={() => navigate(`/groups/${groupId}/expenses/${expense._id}`)}
+      onMouseEnter={handlePrefetch}
+      onTouchStart={handlePrefetch}
       className={cn(
         'w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl',
         'bg-[#252525] hover:bg-[#2e2e2e] active:bg-[#333]',
         'transition-colors duration-150 text-left'
       )}
     >
+
       {/* Expense Icon */}
       <div className="w-10 h-10 rounded-xl bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
         {expense.icon ? (

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Users } from 'lucide-react'
 import { groupService } from '../../services/group.service'
+import { expenseService } from '../../services/expense.service'
+import { useDataCache, prefetchData } from '../../hooks/useDataCache'
 import LoadingSpinner from '../shared/LoadingSpinner'
 import { cn } from '../../lib/cn'
 
@@ -14,11 +15,24 @@ function getInitials(name) {
     .slice(0, 2)
 }
 
+
 function GroupCard({ group, onClick }) {
+  const handlePrefetch = () => {
+    // 1. Preload JS route bundle chunk
+    import('../../pages/GroupDetail').catch(() => {});
+    
+    // 2. Prefetch API endpoints in parallel into client cache
+    prefetchData(`group_detail_${group._id}`, () => groupService.getGroupById(group._id));
+    prefetchData(`group_expenses_${group._id}`, () => expenseService.getGroupExpenses(group._id));
+    prefetchData(`group_settlements_${group._id}`, () => groupService.getSettlement(group._id));
+  };
+
   return (
     <button
       id={`group-${group._id}`}
       onClick={onClick}
+      onMouseEnter={handlePrefetch}
+      onTouchStart={handlePrefetch}
       className={cn(
         'w-full flex items-center gap-4 px-5 py-4 rounded-2xl',
         'bg-[#252525]',
@@ -84,18 +98,10 @@ function EmptyState() {
 
 export default function GroupsView() {
   const navigate = useNavigate()
-  const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { data: groupsData, loading, error, invalidateCache } = useDataCache('user_groups', () => groupService.getGroups())
+  const groups = groupsData || []
 
-  useEffect(() => {
-    groupService.getGroups()
-      .then((res) => setGroups(res.data))
-      .catch((err) => setError(err.response?.data?.message || 'Failed to load groups'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  if (loading) {
+  if (loading && groups.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <LoadingSpinner size="lg" />
@@ -103,12 +109,15 @@ export default function GroupsView() {
     )
   }
 
-  if (error) {
+  if (error && groups.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-6">
         <p className="text-sm text-danger mb-2">{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            invalidateCache();
+            window.location.reload();
+          }}
           className="text-sm text-[#6b7280] hover:text-white transition-colors"
         >
           Try again
@@ -116,6 +125,7 @@ export default function GroupsView() {
       </div>
     )
   }
+
 
   return (
     <section id="groups-view">
