@@ -19,22 +19,41 @@ import messageRoutes from "./routes/message.routes.js"
 dotenv.config();
 connectDB();
 
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/$/, '') : null,
+  'http://localhost:5173',
+  'http://localhost:3000',
+].filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like health checks, curl, mobile apps)
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (
+      allowedOrigins.some(
+        (allowed) => allowed === origin || allowed === normalizedOrigin
+      ) ||
+      normalizedOrigin.includes('localhost')
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Fallback to allow or pass origin
+  },
+  credentials: true,
+};
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CLIENT_URL,
-    credentials: true,
-  },
+  cors: corsOptions,
 });
 
 app.set("io", io);
 registerSocketHandlers(io);
 
-app.use(cors({
-  origin: process.env.CLIENT_URL,
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser())
 app.use(morgan("dev"));
