@@ -90,7 +90,7 @@ app.get("/", (req, res) => {
 });
 
 app.get("/healthz", (req, res) => {
-  res.status(200).send("OK");
+  checkReadiness(req, res);
 });
 
 app.get("/health", checkReadiness);

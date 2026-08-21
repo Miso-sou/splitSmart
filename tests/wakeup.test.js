@@ -51,11 +51,11 @@ describe('Shared API URL Helper Tests', () => {
 
   describe('2. Endpoint Resolvers (getHealthUrl, getReadyUrl, getSocketUrl)', () => {
     it('resolves health URL correctly across all input formats', () => {
-      assert.equal(getHealthUrl('http://localhost:5000'), 'http://localhost:5000/health');
-      assert.equal(getHealthUrl('http://localhost:5000/api'), 'http://localhost:5000/health');
-      assert.equal(getHealthUrl('http://localhost:5000/'), 'http://localhost:5000/health');
-      assert.equal(getHealthUrl(''), '/health');
-      assert.equal(getHealthUrl(undefined), '/health');
+      assert.equal(getHealthUrl('http://localhost:5000'), 'http://localhost:5000/healthz');
+      assert.equal(getHealthUrl('http://localhost:5000/api'), 'http://localhost:5000/healthz');
+      assert.equal(getHealthUrl('http://localhost:5000/'), 'http://localhost:5000/healthz');
+      assert.equal(getHealthUrl(''), '/healthz');
+      assert.equal(getHealthUrl(undefined), '/healthz');
     });
 
     it('resolves ready URL correctly across all input formats', () => {
@@ -189,6 +189,7 @@ describe('Backend Health & DB Readiness Server Tests', () => {
       });
     };
 
+    app.get('/healthz', checkReadiness);
     app.get('/health', checkReadiness);
     app.get('/ready', checkReadiness);
     app.get('/api/health', checkReadiness);
@@ -244,10 +245,10 @@ describe('Backend Health & DB Readiness Server Tests', () => {
     assert.equal(validateHealthResponse(resConnected, dataConnected), true);
   });
 
-  it('responds correctly on all alias routes (/health, /ready, /api/health, /api/ready)', async () => {
+  it('responds correctly on all health and readiness routes', async () => {
     simulatedDbReadyState = 1;
 
-    for (const path of ['/health', '/ready', '/api/health', '/api/ready']) {
+    for (const path of ['/healthz', '/health', '/ready', '/api/health', '/api/ready']) {
       const res = await fetch(`${serverUrl}${path}`);
       assert.equal(res.status, 200);
       const data = await res.json();

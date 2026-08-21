@@ -21,14 +21,14 @@ export function getCanonicalOrigin(rawUrl = import.meta.env?.VITE_API_URL) {
 }
 
 /**
- * Returns the health check endpoint URL.
+ * Returns the Render liveness/readiness endpoint URL.
  *
  * @param {string} [rawUrl]
  * @returns {string}
  */
 export function getHealthUrl(rawUrl) {
   const origin = getCanonicalOrigin(rawUrl);
-  return origin ? `${origin}/health` : '/health';
+  return origin ? `${origin}/healthz` : '/healthz';
 }
 
 /**
