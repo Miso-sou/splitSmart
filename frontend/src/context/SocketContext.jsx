@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { AuthContext } from './AuthContext'
+import { getSocketUrl } from '../utils/apiUrl'
 
 export const SocketContext = createContext(null)
 
@@ -15,7 +16,7 @@ export function SocketProvider({ children }) {
       return
     }
 
-    const newSocket = io(import.meta.env.VITE_API_URL || '', {
+    const newSocket = io(getSocketUrl(), {
       auth: { token },
       reconnection: true,
       reconnectionAttempts: Infinity,

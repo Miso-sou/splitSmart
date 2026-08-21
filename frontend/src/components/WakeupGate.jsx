@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useBackendWakeup } from '../hooks/useBackendWakeup';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function WakeupGate({ children }) {
-  const { status, attempt } = useBackendWakeup();
+  const { status, attempt, retry } = useBackendWakeup();
   const [dots, setDots] = useState('');
 
   useEffect(() => {
@@ -11,43 +12,47 @@ export default function WakeupGate({ children }) {
     setDots('.'.repeat(dotCount));
   }, [attempt, status]);
 
-  // Show waking modal only if backend did not respond on the immediate first attempt (e.g. Render cold start)
-  const isSleeping = status === 'waking' && attempt > 1;
+  // Mount application children ONLY after validated backend readiness
+  if (status === 'ready') {
+    return children;
+  }
 
   return (
-    <>
-      {children}
-      {(isSleeping || status === 'error') && (
-        <div className="fixed inset-0 flex items-center justify-center bg-[#0f1010]/90 backdrop-blur-md z-50 transition-opacity duration-300">
-          <div className="bg-white/[0.06] backdrop-blur-md border border-white/[0.10] rounded-2xl shadow-glass p-8 flex flex-col items-center max-w-sm w-full mx-4 text-center">
-            {isSleeping && (
-              <>
-                <div className="w-12 h-12 border-4 border-green-500/30 border-t-green-500 rounded-full animate-spin mb-6"></div>
-                <h2 className="text-xl font-semibold text-white mb-2 flex items-center justify-center">
-                  Waking up server<span className="inline-block w-4 text-left">{dots}</span>
-                </h2>
-                {attempt > 3 && (
-                  <p className="text-gray-400 text-sm mt-2 transition-opacity duration-500 opacity-100">
-                    Taking longer than usual, hang tight
-                  </p>
-                )}
-              </>
-            )}
-            {status === 'error' && (
-              <>
-                <div className="w-12 h-12 flex items-center justify-center rounded-full bg-red-500/20 text-red-500 mb-6">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-semibold text-white mb-2">Could not reach server.</h2>
-                <p className="text-gray-400 text-sm">Please try again later.</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </>
+    <div className="fixed inset-0 flex items-center justify-center bg-[#0f1010] z-50 transition-opacity duration-300">
+      <div className="bg-[#18191a] border border-white/[0.08] rounded-3xl shadow-glass p-8 flex flex-col items-center max-w-sm w-full mx-4 text-center">
+        {status === 'waking' && (
+          <>
+            <div className="w-12 h-12 border-4 border-green-500/20 border-t-green-500 rounded-full animate-spin mb-6"></div>
+            <h2 className="text-xl font-semibold text-white mb-2 flex items-center justify-center">
+              Waking up server<span className="inline-block w-4 text-left">{dots}</span>
+            </h2>
+            <p className="text-gray-400 text-sm mt-1">
+              {attempt > 3
+                ? 'Free instances on Render take up to a minute to spin up. Hang tight...'
+                : 'Verifying server connection...'}
+            </p>
+          </>
+        )}
+
+        {status === 'error' && (
+          <>
+            <div className="w-12 h-12 flex items-center justify-center rounded-full bg-red-500/10 text-red-400 mb-6 border border-red-500/20">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Could not reach server</h2>
+            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+              The server took too long to respond or is temporarily unavailable.
+            </p>
+            <button
+              onClick={retry}
+              className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] active:bg-white/[0.18] border border-white/[0.12] text-white font-medium text-sm transition-all duration-200"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry Connection
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
-

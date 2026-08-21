@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { getAccessToken, setAccessToken } from './tokenStore.js'
+import { getCanonicalOrigin } from '../utils/apiUrl.js'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: getCanonicalOrigin(),
   withCredentials: true,
 })
 
@@ -41,7 +42,7 @@ api.interceptors.response.use(
 
       // If a refresh is not already in progress, start one
       if (!refreshPromise) {
-        const rawBaseURL = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '').replace(/\/$/, '');
+        const rawBaseURL = getCanonicalOrigin();
         refreshPromise = axios.post(
           `${rawBaseURL}/api/auth/refresh`,
           {},

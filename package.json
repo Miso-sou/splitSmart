@@ -1,4 +1,10 @@
 {
+  "name": "splitsmart",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/wakeup.test.js"
+  },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "express-rate-limit": "^8.5.1",

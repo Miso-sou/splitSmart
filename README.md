@@ -237,7 +237,9 @@ touch .env
 ```
 
 ```env
+# Canonical format: Backend origin ONLY (no trailing slashes, no /api suffix)
 VITE_API_URL=http://localhost:5000
+# In production on Render: VITE_API_URL=https://splitsmart-backend.onrender.com
 ```
 
 ---

@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import dotenv from "dotenv";
@@ -67,6 +68,23 @@ app.use("/api/settlements", settlementRoutes)
 app.use("/api/group", messageRoutes)
 
 
+const checkReadiness = (req, res) => {
+  const isDbReady = mongoose.connection.readyState === 1;
+  if (!isDbReady) {
+    return res.status(503).json({
+      status: 'unavailable',
+      db: 'connecting',
+      timestamp: Date.now()
+    });
+  }
+  return res.status(200).json({
+    status: 'ok',
+    db: 'connected',
+    uptime: process.uptime(),
+    timestamp: Date.now()
+  });
+};
+
 app.get("/", (req, res) => {
   res.send("API running");
 });
@@ -75,9 +93,10 @@ app.get("/healthz", (req, res) => {
   res.status(200).send("OK");
 });
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
+app.get("/health", checkReadiness);
+app.get("/ready", checkReadiness);
+app.get("/api/health", checkReadiness);
+app.get("/api/ready", checkReadiness);
 
 // Central error handler — must be after all routes
 app.use(errorHandler);
